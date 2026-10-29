@@ -112,7 +112,34 @@ impl Storage {
             CREATE INDEX IF NOT EXISTS idx_logs_id ON execution_logs (id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_profile ON execution_logs (profile_id, id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_category ON execution_logs (category, id DESC);
-            CREATE INDEX IF NOT EXISTS idx_logs_status ON execution_logs (status, id DESC);",
+            CREATE INDEX IF NOT EXISTS idx_logs_status ON execution_logs (status, id DESC);
+
+            CREATE TABLE IF NOT EXISTS security_audits (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp    INTEGER NOT NULL,
+                profile_id   TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                score        INTEGER NOT NULL,
+                critical     INTEGER NOT NULL,
+                high         INTEGER NOT NULL,
+                medium       INTEGER NOT NULL,
+                low          INTEGER NOT NULL,
+                findings     INTEGER NOT NULL,
+                report_json  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_security_profile ON security_audits (profile_id, id DESC);
+
+            CREATE TABLE IF NOT EXISTS cron_backups (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp    INTEGER NOT NULL,
+                profile_id   TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                source       TEXT NOT NULL,
+                backup_path  TEXT NOT NULL,
+                removed      INTEGER NOT NULL,
+                entries_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_cron_backups_profile ON cron_backups (profile_id, id DESC);",
         )?;
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
@@ -413,6 +440,196 @@ impl Storage {
         Ok(logs)
     }
 
+    pub fn insert_cron_backup(
+        &self,
+        profile_id: &str,
+        profile_name: &str,
+        source: &str,
+        backup_path: &str,
+        entries: &[String],
+    ) -> AppResult<i64> {
+        let json = serde_json::to_string(entries)?;
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO cron_backups
+                (timestamp, profile_id, profile_name, source, backup_path, removed, entries_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                chrono::Utc::now().timestamp(),
+                profile_id,
+                profile_name,
+                source,
+                backup_path,
+                entries.len() as u32,
+                json
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_cron_backups(
+        &self,
+        profile_id: Option<&str>,
+        limit: u32,
+    ) -> AppResult<Vec<crate::models::CronBackupSummary>> {
+        let conn = self.lock()?;
+        let mut statement = conn.prepare(
+            "SELECT id, timestamp, profile_id, profile_name, source, backup_path, removed, entries_json
+             FROM cron_backups
+             WHERE (?1 IS NULL OR profile_id = ?1)
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![profile_id, limit.clamp(1, 200) as i64], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, u32>(6)?,
+                row.get::<_, String>(7)?,
+            ))
+        })?;
+        let mut backups = Vec::new();
+        for row in rows {
+            let (id, timestamp, profile_id, profile_name, source, backup_path, removed, json) =
+                row?;
+            backups.push(crate::models::CronBackupSummary {
+                id,
+                timestamp,
+                profile_id,
+                profile_name,
+                source,
+                backup_path,
+                removed,
+                entries: serde_json::from_str(&json).unwrap_or_default(),
+            });
+        }
+        Ok(backups)
+    }
+
+    pub fn get_cron_backup(&self, id: i64) -> AppResult<Option<crate::models::CronBackupSummary>> {
+        let conn = self.lock()?;
+        let row = conn
+            .query_row(
+                "SELECT id, timestamp, profile_id, profile_name, source, backup_path, removed, entries_json
+                 FROM cron_backups WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, u32>(6)?,
+                        row.get::<_, String>(7)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((id, timestamp, profile_id, profile_name, source, backup_path, removed, json)) =
+            row
+        else {
+            return Ok(None);
+        };
+        Ok(Some(crate::models::CronBackupSummary {
+            id,
+            timestamp,
+            profile_id,
+            profile_name,
+            source,
+            backup_path,
+            removed,
+            entries: serde_json::from_str(&json).unwrap_or_default(),
+        }))
+    }
+
+    pub fn insert_security_audit(&self, report: &crate::models::SecurityReport) -> AppResult<i64> {
+        let json = serde_json::to_string(report)?;
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO security_audits
+                (timestamp, profile_id, profile_name, score, critical, high, medium, low, findings, report_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                report.timestamp,
+                report.profile_id,
+                report.profile_name,
+                report.score,
+                report.summary.critical,
+                report.summary.high,
+                report.summary.medium,
+                report.summary.low,
+                report.findings.len() as u32,
+                json
+            ],
+        )?;
+        let id = conn.last_insert_rowid();
+        drop(conn);
+        restrict_database_permissions(&self.path);
+        let conn = self.lock()?;
+        conn.execute(
+            "DELETE FROM security_audits WHERE id NOT IN (SELECT id FROM security_audits ORDER BY id DESC LIMIT 100)",
+            [],
+        )?;
+        Ok(id)
+    }
+
+    pub fn list_security_audits(
+        &self,
+        profile_id: Option<&str>,
+        limit: u32,
+    ) -> AppResult<Vec<crate::models::SecurityAuditSummary>> {
+        let conn = self.lock()?;
+        let mut statement = conn.prepare(
+            "SELECT id, timestamp, profile_id, profile_name, score, critical, high, medium, low, findings
+             FROM security_audits
+             WHERE (?1 IS NULL OR profile_id = ?1)
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![profile_id, limit.clamp(1, 100) as i64], |row| {
+            Ok(crate::models::SecurityAuditSummary {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                profile_id: row.get(2)?,
+                profile_name: row.get(3)?,
+                score: row.get(4)?,
+                critical: row.get(5)?,
+                high: row.get(6)?,
+                medium: row.get(7)?,
+                low: row.get(8)?,
+                findings: row.get(9)?,
+            })
+        })?;
+        let mut audits = Vec::new();
+        for row in rows {
+            audits.push(row?);
+        }
+        Ok(audits)
+    }
+
+    pub fn get_security_audit(&self, id: i64) -> AppResult<Option<crate::models::SecurityReport>> {
+        let conn = self.lock()?;
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT report_json FROM security_audits WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(json.and_then(|raw| {
+            serde_json::from_str::<crate::models::SecurityReport>(&raw)
+                .ok()
+                .map(|mut report| {
+                    report.id = Some(id);
+                    report
+                })
+        }))
+    }
+
     pub fn clear_logs(&self, profile_id: Option<&str>) -> AppResult<usize> {
         let conn = self.lock()?;
         let changed = if let Some(profile_id) = profile_id {
@@ -551,6 +768,49 @@ mod tests {
         );
         assert!(!legacy.exists());
         assert!(dir.path().join("nexshell.json.migrated").exists());
+    }
+
+    #[test]
+    fn persists_security_audits() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = test_storage(&dir);
+        let report = crate::models::SecurityReport {
+            id: None,
+            timestamp: 123,
+            profile_id: "p1".into(),
+            profile_name: "prod".into(),
+            hostname: "web-01".into(),
+            score: 72,
+            summary: crate::models::SecuritySummary {
+                critical: 0,
+                high: 1,
+                medium: 1,
+                low: 0,
+                info: 0,
+                passed: 8,
+            },
+            findings: vec![crate::models::SecurityFinding {
+                id: "test".into(),
+                title: "test finding".into(),
+                severity: "high".into(),
+                category: "SSH".into(),
+                status: "fail".into(),
+                detail: "detail".into(),
+                evidence: "evidence".into(),
+                remediation: "fix".into(),
+                fixable: false,
+            }],
+            cron: None,
+            duration_ms: 10,
+        };
+        let id = storage.insert_security_audit(&report).unwrap();
+        let audits = storage.list_security_audits(Some("p1"), 10).unwrap();
+        assert_eq!(audits.len(), 1);
+        assert_eq!(audits[0].score, 72);
+        let restored = storage.get_security_audit(id).unwrap().unwrap();
+        assert_eq!(restored.id, Some(id));
+        assert_eq!(restored.findings.len(), 1);
+        assert_eq!(restored.findings[0].severity, "high");
     }
 
     #[test]

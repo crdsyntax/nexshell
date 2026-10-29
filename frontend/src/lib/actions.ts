@@ -45,6 +45,19 @@ export function openAudit(): void {
   useAppStore.getState().openAuditTab()
 }
 
+export function openDatabase(): void {
+  useAppStore.getState().openDatabaseTab()
+}
+
+export function openSecurity(): void {
+  useAppStore.getState().openSecurityTab()
+}
+
+export function openNetwork(profile: Profile): void {
+  useAppStore.getState().openNetworkTab(profile)
+  void detectServerFor(profile.id)
+}
+
 export function openMonitor(profile: Profile): void {
   useAppStore.getState().openSingletonTab(profile, 'monitor')
   void detectServerFor(profile.id)

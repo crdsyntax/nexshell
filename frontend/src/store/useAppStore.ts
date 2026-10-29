@@ -43,6 +43,9 @@ interface AppStore {
   openProcessTerminal: (profile: Profile, pid: number) => string
   openDirectoryTerminal: (profile: Profile, directory: string) => string
   openAuditTab: () => string
+  openDatabaseTab: () => string
+  openSecurityTab: () => string
+  openNetworkTab: (profile: Profile) => string
   openSingletonTab: (profile: Profile, kind: Exclude<TabKind, 'terminal'>) => string
   closeTab: (id: string) => void
   activateTab: (id: string) => void
@@ -196,6 +199,69 @@ export const useAppStore = create<AppStore>((set, get) => ({
       status: 'connected',
     }
     set({ tabs: [...state.tabs, tab], activeTabId: id })
+    return id
+  },
+
+  openDatabaseTab: () => {
+    const state = get()
+    const existing = state.tabs.find((tab) => tab.kind === 'database')
+    if (existing) {
+      set({ activeTabId: existing.id })
+      return existing.id
+    }
+    const id = newId()
+    const tab: WorkspaceTab = {
+      id,
+      kind: 'database',
+      title: 'Databases',
+      profileId: state.activeProfileId ?? '',
+      status: 'connected',
+    }
+    set({ tabs: [...state.tabs, tab], activeTabId: id })
+    return id
+  },
+
+  openSecurityTab: () => {
+    const state = get()
+    const existing = state.tabs.find((tab) => tab.kind === 'security')
+    if (existing) {
+      set({ activeTabId: existing.id })
+      return existing.id
+    }
+    const id = newId()
+    const tab: WorkspaceTab = {
+      id,
+      kind: 'security',
+      title: 'Security',
+      profileId: state.activeProfileId ?? '',
+      status: 'connected',
+    }
+    set({ tabs: [...state.tabs, tab], activeTabId: id })
+    return id
+  },
+
+  openNetworkTab: (profile) => {
+    const state = get()
+    const existing = state.tabs.find(
+      (tab) => tab.kind === 'network' && tab.profileId === profile.id,
+    )
+    if (existing) {
+      set({ activeTabId: existing.id, activeProfileId: profile.id })
+      return existing.id
+    }
+    const id = newId()
+    const tab: WorkspaceTab = {
+      id,
+      kind: 'network',
+      title: `${profile.name} · Network`,
+      profileId: profile.id,
+      status: 'connected',
+    }
+    set({
+      tabs: [...state.tabs, tab],
+      activeTabId: id,
+      activeProfileId: profile.id,
+    })
     return id
   },
 

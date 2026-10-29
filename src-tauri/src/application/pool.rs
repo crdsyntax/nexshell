@@ -409,6 +409,34 @@ impl PoolManager {
             .await
     }
 
+    /// Execute SQL that contains a password. The audit trail records only the
+    /// outcome, never the command or its output.
+    pub async fn execute_sensitive(
+        &self,
+        profile_id: &str,
+        command: &str,
+        timeout: Duration,
+    ) -> AppResult<ExecOutput> {
+        let pool = self.pool(profile_id).await?;
+        let lease = pool.acquire().await?;
+        let started = Instant::now();
+        let result = lease.connection().exec(command, timeout).await;
+        let status = match &result {
+            Ok(output) if output.success() => "success",
+            Ok(_) => "failed",
+            Err(_) => "error",
+        };
+        let mut event = AuditEvent::new("database", "sensitive-exec", status)
+            .profile(Some(profile_id), Some(&pool.profile_name))
+            .target("sensitive SQL")
+            .duration(started.elapsed().as_millis() as u64);
+        if let Ok(output) = &result {
+            event = event.exit(Some(output.exit_status));
+        }
+        self.audit.log(event);
+        result
+    }
+
     /// Polling/status checks that should not pollute the audit trail.
     pub async fn execute_silent(
         &self,

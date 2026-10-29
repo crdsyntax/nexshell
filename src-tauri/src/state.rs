@@ -9,6 +9,7 @@ use crate::ssh::KnownHostsStore;
 use std::sync::Arc;
 
 pub struct AppState {
+    pub storage: Arc<Storage>,
     pub audit: Arc<AuditService>,
     pub profiles: Arc<ProfileService>,
     pub pools: Arc<PoolManager>,
@@ -28,6 +29,7 @@ impl AppState {
         ));
 
         Self {
+            storage,
             audit: audit.clone(),
             profiles,
             pools,

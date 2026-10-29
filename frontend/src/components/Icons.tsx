@@ -209,6 +209,21 @@ export const CopyIcon = (p: IconProps) => (
   </svg>
 )
 
+export const DatabaseIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <ellipse cx="12" cy="5.5" rx="8" ry="3" />
+    <path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+    <path d="M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+  </svg>
+)
+
+export const WrenchIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M14.7 6.3a4 4 0 0 0 5 5L11 20a2.1 2.1 0 0 1-3-3l9.7-9.7Z" />
+    <path d="M14.7 6.3 17 4l3 3-2.3 2.3" />
+  </svg>
+)
+
 export const InfoIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <circle cx="12" cy="12" r="9" />

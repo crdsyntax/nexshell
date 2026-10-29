@@ -1,8 +1,17 @@
 pub mod audit;
+pub mod cron;
+pub mod database;
 pub mod filesystem;
+pub mod incident;
 pub mod metrics;
+pub mod network;
+pub mod pm2;
 pub mod pool;
 pub mod processes;
 pub mod profiles;
+pub mod remediation;
+pub mod security;
 pub mod services;
+pub mod ssh_access;
+pub mod sudoers;
 pub mod terminal;

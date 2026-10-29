@@ -219,6 +219,386 @@ pub struct ProfileView {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SshKey {
+    pub user: String,
+    pub path: String,
+    pub key_type: String,
+    pub comment: String,
+    pub fingerprint: String,
+    pub raw: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConfig {
+    pub pubkey_authentication: String,
+    pub password_authentication: String,
+    pub kbd_interactive_authentication: String,
+    pub permit_root_login: String,
+    pub config_test_ok: bool,
+    pub dropin_present: bool,
+    pub dropin_path: String,
+    pub output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshActionResult {
+    pub ok: bool,
+    pub output: String,
+    pub config: Option<SshConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CronEntry {
+    pub source: String,
+    pub schedule: String,
+    pub user: Option<String>,
+    pub command: String,
+    pub raw: String,
+    pub suspicious: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CronReport {
+    pub hostname: String,
+    pub generated_at: i64,
+    pub service_state: String,
+    pub entries: Vec<CronEntry>,
+    pub timers: Vec<String>,
+    pub at_jobs: Vec<String>,
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub recent: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityFinding {
+    pub id: String,
+    pub title: String,
+    pub severity: String,
+    pub category: String,
+    pub status: String,
+    pub detail: String,
+    pub evidence: String,
+    pub remediation: String,
+    /// True when 2Shell can apply a validated, reversible fix for this finding.
+    #[serde(default)]
+    pub fixable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeProcess {
+    pub pid: u32,
+    pub user: String,
+    pub cpu: f64,
+    pub mem: f64,
+    pub rss_kb: u64,
+    pub elapsed_secs: u64,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListeningPort {
+    pub protocol: String,
+    pub local: String,
+    pub ip: String,
+    pub port: u16,
+    pub process: String,
+    pub pid: Option<u32>,
+    pub public: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkConnection {
+    pub protocol: String,
+    pub state: String,
+    pub local: String,
+    pub remote: String,
+    pub process: String,
+    pub pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkReport {
+    pub hostname: String,
+    pub generated_at: i64,
+    pub listening: Vec<ListeningPort>,
+    pub connections: Vec<NetworkConnection>,
+    pub listening_summary: Vec<String>,
+    pub stats: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SudoGroup {
+    pub name: String,
+    pub gid: String,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SudoRule {
+    pub principal: String,
+    pub host: String,
+    pub runas: String,
+    pub nopasswd: bool,
+    pub commands: String,
+    pub source: String,
+    pub raw: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SudoAccount {
+    pub user: String,
+    pub exists: bool,
+    pub uid: String,
+    pub gid: String,
+    pub home: String,
+    pub shell: String,
+    pub password_status: String,
+    pub last_login: String,
+    pub authorized_keys: u32,
+    pub groups: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SudoersReport {
+    pub hostname: String,
+    pub generated_at: i64,
+    pub groups: Vec<SudoGroup>,
+    pub rules: Vec<SudoRule>,
+    pub accounts: Vec<SudoAccount>,
+    pub root_accounts: Vec<String>,
+    pub config_ok: bool,
+    pub config_output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pm2Process {
+    pub id: i64,
+    pub name: String,
+    pub namespace: String,
+    pub status: String,
+    pub pid: Option<i64>,
+    pub uptime_ms: Option<i64>,
+    pub restarts: i64,
+    pub cpu: f64,
+    pub memory: u64,
+    pub mode: String,
+    pub script: String,
+    pub cwd: String,
+    pub version: String,
+    pub out_log: String,
+    pub err_log: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pm2Report {
+    pub available: bool,
+    pub binary: String,
+    pub processes: Vec<Pm2Process>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pm2Logs {
+    pub id: u32,
+    pub name: String,
+    pub out_path: String,
+    pub err_path: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CronDeleteResult {
+    pub source: String,
+    pub backup: String,
+    pub output: String,
+    #[serde(default)]
+    pub entries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CronBulkDeleteResult {
+    pub output: String,
+    pub results: Vec<CronDeleteResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CronBackupSummary {
+    pub id: i64,
+    pub timestamp: i64,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub source: String,
+    pub backup_path: String,
+    pub removed: u32,
+    pub entries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuspectProcess {
+    pub pid: u32,
+    pub user: String,
+    pub exe: String,
+    pub started: String,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuspectFile {
+    pub path: String,
+    pub mode: String,
+    pub owner: String,
+    pub size: u64,
+    pub modified: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuspectConnection {
+    pub local: String,
+    pub remote: String,
+    pub ip: String,
+    pub port: u16,
+    pub process: String,
+    pub pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncidentScan {
+    pub hostname: String,
+    pub generated_at: i64,
+    pub processes: Vec<SuspectProcess>,
+    pub files: Vec<SuspectFile>,
+    pub env_hits: Vec<String>,
+    pub connections: Vec<SuspectConnection>,
+    pub authorized_keys: Vec<String>,
+    pub units: Vec<String>,
+    pub shell_history: Vec<String>,
+    pub containers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncidentActionResult {
+    pub ok: bool,
+    pub output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityFixResult {
+    pub finding_id: String,
+    pub ok: bool,
+    pub output: String,
+    #[serde(default)]
+    pub cron_backups: Vec<CronDeleteResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecuritySummary {
+    pub critical: u32,
+    pub high: u32,
+    pub medium: u32,
+    pub low: u32,
+    pub info: u32,
+    pub passed: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityReport {
+    pub id: Option<i64>,
+    pub timestamp: i64,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub hostname: String,
+    pub score: u32,
+    pub summary: SecuritySummary,
+    pub findings: Vec<SecurityFinding>,
+    pub cron: Option<CronReport>,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityAuditSummary {
+    pub id: i64,
+    pub timestamp: i64,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub score: u32,
+    pub critical: u32,
+    pub high: u32,
+    pub medium: u32,
+    pub low: u32,
+    pub findings: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbInfo {
+    pub installed: bool,
+    pub client: String,
+    pub version: String,
+    pub hostname: String,
+    pub port: u16,
+    pub socket: String,
+    pub service_state: String,
+    pub can_query: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbUser {
+    pub user: String,
+    pub host: String,
+    pub plugin: String,
+    pub system: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbLoginTest {
+    pub ok: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbPasswordResult {
+    pub ok: bool,
+    pub output: String,
+    pub exit_code: i32,
+    pub test: Option<DbLoginTest>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionLog {
     pub id: i64,
     pub timestamp: i64,

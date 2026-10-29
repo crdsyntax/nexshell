@@ -29,7 +29,7 @@ cd src-tauri && cargo test --lib
 ## Estructura
 
 - `src-tauri/src/presentation/tauri/commands.rs`: comandos IPC. Sin lógica de negocio.
-- `src-tauri/src/application/`: perfiles, pool, terminal, métricas, servicios, procesos, archivos y auditoría.
+- `src-tauri/src/application/`: perfiles, pool, terminal, métricas, servicios, procesos, archivos, auditoría, cron, seguridad, SSH access, bases de datos, incidentes y PM2.
 - `src-tauri/src/infrastructure/`: SQLite (WAL), migración JSON y AES-256-GCM.
 - `src-tauri/src/ssh/`: handshake, auth, known hosts, exec, PTY.
 - `src-tauri/src/models/`: DTOs serde; los secretos nunca se serializan.

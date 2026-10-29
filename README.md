@@ -36,6 +36,40 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
   **Root filesystem** incluye un escaneo de los 20 archivos más grandes
   (`find / -xdev | du | sort -rh`), con acciones para abrir su carpeta, ver propiedades
   y eliminarlos.
+- **Gestión de MariaDB/MySQL**: lista usuarios y hosts, muestra plugins y grants,
+  cambia contraseñas con generación segura y prueba la nueva credencial. No modifica
+  automáticamente el `.env` de la aplicación.
+- **SSH Access**: lista claves autorizadas, añade/elimina claves públicas y activa el
+  acceso **solo por clave**, deshabilitando `PasswordAuthentication` mediante un
+  drop-in validado y reversible de `sshd`.
+- **Cron**: visor de crontabs de root y usuarios, `/etc/crontab`, `/etc/cron.d`,
+  tareas periódicas, systemd timers, `at` y anacron, con marca de entradas sospechosas
+  (incluye `docker start`/`docker run`). Las entradas de crontab, `/etc/crontab` y
+  `/etc/cron.d` se pueden **eliminar con backup previo y confirmación**.
+- **Monitor en dos columnas**: Top processes a la izquierda y PM2 a la derecha, más un
+  visor de procesos Node activos.
+- **Network**: pestaña dedicada con puertos en escucha, conexiones establecidas, proceso
+  y PID, marca de exposición pública y resumen de sockets/DNS/ruta.
+- **Sudoers**: en Security, grupos con privilegios, reglas con `NOPASSWD` resaltado,
+  cuentas referenciadas (existencia, UID, shell, estado de contraseña, último login,
+  claves SSH) y acciones para **eliminar una regla** (backup + `visudo -c` + rollback) o
+  **bloquear/desbloquear** la cuenta.
+- **PM2**: en la pestaña Monitor se listan las apps con estado, CPU, memoria,
+  reinicios y uptime; se pueden iniciar, detener, reiniciar o eliminar del listado y
+  ver el tail de los logs `out`/`error`.
+- **Incident**: escaneo de procesos desde directorios temporales, binarios/scripts
+  ocultos, variables de entorno sospechosas, conexiones salientes, claves autorizadas,
+  historial de root y contenedores. Permite **matar el proceso**, **poner en
+  cuarentena** el binario con hash SHA-256 y **bloquear la IP** en iptables/firewalld.
+- **Backups de cron**: cada borrado queda en `/var/backups/2shell/cron` y se puede
+  **restaurar** desde la propia vista. Avisa si la entrada no era sospechosa.
+- **Remediación**: los hallazgos corregibles muestran un botón **Solucionar** que aplica
+  el fix con validación y rollback (sshd, permisos, puertos de base de datos y cron
+  sospechoso). Los que requieren criterio humano se marcan como `manual`.
+- **Auditoría de seguridad**: score 0–100 y hallazgos priorizados sobre SSH, firewall,
+  SELinux/AppArmor, actualizaciones, cuentas UID 0, contraseñas vacías, permisos,
+  puertos de bases de datos expuestos, SUID, `/tmp`, `ld.so.preload`, fuerza bruta y cron.
+  Historial persistido en SQLite.
 - **Gestión de nginx / apache2 / httpd**: estado, start/stop/restart/reload, `configtest`,
   exploración y edición de configuración con **backup + validación + rollback automático**,
   y tail de logs.
@@ -52,6 +86,12 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
 ![File properties](docs/screenshot-file-properties.jpg)
 
 ![Kill process](docs/screenshot-process-kill.jpg)
+
+![Seguridad](docs/screenshot-security.jpg)
+
+![Cron](docs/screenshot-cron.jpg)
+
+![SSH access](docs/screenshot-ssh-access.jpg)
 
 ![Servicios](docs/screenshot-services.jpg)
 
@@ -151,6 +191,10 @@ Linux:
 - `known_hosts`: fingerprint SSH por `host:port` (TOFU).
 - `execution_logs`: timestamp, perfil, categoría, acción, objetivo, comando, estado,
   exit code, duración, salida y error. Retención: 10.000 entradas.
+- `security_audits`: informe completo de cada auditoría (score, hallazgos y cron) para
+  consultar el historial desde la pestaña Security.
+- `cron_backups`: origen, ruta del backup, entradas eliminadas y fecha de cada borrado
+  de cron, para poder restaurarlo.
 - Migración automática: al arrancar, si la base está vacía y existe `nexshell.json`,
   importa perfiles y host keys y renombra el JSON a `.migrated`.
 - La base y sus sidecars `-wal`/`-shm` se fuerzan a modo `0600`.
@@ -225,7 +269,8 @@ Cmnd_Alias TWOSHELL = /usr/bin/systemctl, /usr/sbin/service, \
   /usr/sbin/nginx, /usr/sbin/apache2ctl, /usr/sbin/httpd, \
   /usr/bin/cp, /usr/bin/find, /usr/bin/cat, /usr/bin/readlink, /usr/bin/tee, \
   /usr/bin/tail, /usr/bin/journalctl, /usr/bin/test, /usr/bin/base64, \
-  /usr/bin/stat, /usr/bin/du, /usr/bin/rm, /usr/bin/kill
+  /usr/bin/stat, /usr/bin/du, /usr/bin/rm, /usr/bin/kill, \
+  /usr/bin/mariadb, /usr/bin/mysql
 
 deploy ALL=(root) NOPASSWD: TWOSHELL
 ```
@@ -262,6 +307,29 @@ almacena la contraseña de sudo.
 | `list_execution_logs` | Consulta el log con filtros y paginación |
 | `clear_execution_logs` | Borra logs (global o de un perfil) |
 | `audit_db_path` | Ruta de la base SQLite |
+| `database_info/users/grants` | Inspección de MariaDB/MySQL |
+| `database_change_password` | Cambia una clave y prueba el login |
+| `cron_list` | Crontabs, timers, at jobs y actividad reciente |
+| `cron_delete_entry` | Elimina una entrada de cron con backup |
+| `ssh_keys`, `ssh_config` | Claves autorizadas y estado de sshd |
+| `ssh_add_key`, `ssh_remove_key` | Alta/baja de claves públicas |
+| `ssh_set_key_only` | Activa/desactiva PasswordAuthentication |
+| `run_security_audit` | Auditoría completa y persistencia |
+| `list_security_audits`, `get_security_audit` | Historial de auditorías |
+| `apply_security_fix` | Aplica un fix validado con rollback |
+| `cron_list_backups`, `cron_restore_backup` | Historial y restauración de cron |
+| `incident_scan` | Procesos, archivos, entorno, red y persistencia |
+| `incident_kill_process` | Mata un proceso de `/tmp`, `/dev/shm` o borrado |
+| `incident_quarantine` | Mueve un binario a cuarentena con hash |
+| `incident_block_ip` | Bloquea/desbloquea una IP |
+| `pm2_list` | Apps de PM2 con métricas |
+| `pm2_action` | start/stop/restart/reload/delete |
+| `pm2_logs` | Tail de out/error logs |
+| `node_processes` | Procesos Node/PM2 con CPU y memoria |
+| `network_scan` | Puertos y conexiones |
+| `sudoers_report` | Grupos, reglas y cuentas de sudoers |
+| `sudoers_remove_rule` | Elimina una regla con backup y visudo |
+| `system_user_lock` | Bloquea/desbloquea una cuenta |
 | `monitor_start/stop/snapshot` | Colector de métricas y última muestra |
 | `service_detect/status/action` | Detección y control de servicios |
 | `service_config_list/read/write` | Configuración con validación y rollback |
@@ -308,7 +376,16 @@ Conéctate a `127.0.0.1:2222` con `deploy/deploy` (marca *elevated*). Instruccio
   requiere ampliar `ServiceSpec`.
 - No hay persistencia de pestañas ni reconexión automática infinita: la terminal ofrece
   un botón *Reconnect* y el backend reintenta la conexión inicial.
-- No se almacenan logs de auditoría de comandos en esta versión.
+- La gestión de SSH keys y `sshd` espera un perfil SSH **root**. Si se usa un perfil
+  no-root con `elevated`, el backend emplea `sudo -n sh -c`, lo que equivale a root;
+  no lo uses en producción sin asumir ese riesgo.
+- Deshabilitar `PasswordAuthentication` puede dejar fuera a los usuarios sin clave
+  válida. La app exige confirmación y al menos una clave, pero no puede probar el login
+  por ti: conserva la sesión abierta y prueba en otra terminal antes de cerrarla.
+- La auditoría es una capa de detección, no un sustituto de un análisis forense. El
+  estado de parches depende de los backports de la distribución.
+- Cambiar la contraseña de MariaDB no actualiza el `.env` ni reinicia la aplicación;
+  hazlo manualmente después.
 
 ## Roadmap
 

@@ -1,6 +1,6 @@
 use crate::application::pool::PoolManager;
 use crate::error::{AppError, AppResult};
-use crate::models::{ConnectionProfile, ProcessKillResult, ProcessLocation};
+use crate::models::{ConnectionProfile, NodeProcess, ProcessKillResult, ProcessLocation};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +47,18 @@ fn validate_pid(pid: u32) -> AppResult<()> {
     Ok(())
 }
 
+const NODE_SCRIPT: &str = r####"export LC_ALL=C 2>/dev/null
+ps -eo pid=,user=,pcpu=,pmem=,rss=,etimes=,comm=,args= --no-headers 2>/dev/null | awk '
+{
+  comm=$7
+  if (comm !~ /^(node|nodejs|next-server|pm2|npm|npx|yarn|pnpm|bun)$/) next
+  args=""
+  for (i=8;i<=NF;i++) args = args (i>8 ? " " : "") $i
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, $5, $6, args
+}' | head -n 60
+exit 0
+"####;
+
 pub struct ProcessManager;
 
 impl ProcessManager {
@@ -88,6 +100,17 @@ exit 0"#
             )));
         }
         Ok(location)
+    }
+
+    /// Lists Node.js/PM2 processes with CPU, memory and elapsed time.
+    pub async fn node_processes(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+    ) -> AppResult<Vec<NodeProcess>> {
+        let output = pools
+            .execute_with_category(&profile.id, NODE_SCRIPT, Duration::from_secs(20), "monitor")
+            .await?;
+        Ok(parse_node_processes(&output.stdout))
     }
 
     pub async fn kill(
@@ -213,5 +236,56 @@ __CMD__node /srv/app/server.js --port 3000
             ProcessSignal::Kill
         );
         assert!(ProcessSignal::parse("HUP").is_err());
+    }
+}
+
+fn parse_node_processes(output: &str) -> Vec<NodeProcess> {
+    let mut processes: Vec<NodeProcess> = output
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(7, '\t');
+            let pid = parts.next()?.trim().parse().ok()?;
+            Some(NodeProcess {
+                pid,
+                user: parts.next().unwrap_or("").trim().to_string(),
+                cpu: parts
+                    .next()
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or(0.0),
+                mem: parts
+                    .next()
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or(0.0),
+                rss_kb: parts
+                    .next()
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or(0),
+                elapsed_secs: parts
+                    .next()
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or(0),
+                command: parts.next().unwrap_or("").trim().to_string(),
+            })
+        })
+        .collect();
+    processes.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
+    processes
+}
+
+#[cfg(test)]
+mod node_tests {
+    use super::*;
+
+    #[test]
+    fn parses_node_process_rows() {
+        let output =
+            "658292\troot\t12.4\t8.1\t308000\t3600\tnode\t/usr/bin/node /var/www/app/server.js\n";
+        let processes = parse_node_processes(output);
+        assert_eq!(processes.len(), 1);
+        assert_eq!(processes[0].pid, 658292);
+        assert_eq!(processes[0].cpu, 12.4);
+        assert_eq!(processes[0].rss_kb, 308000);
+        assert_eq!(processes[0].elapsed_secs, 3600);
+        assert!(processes[0].command.contains("server.js"));
     }
 }

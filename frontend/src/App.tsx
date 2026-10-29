@@ -7,6 +7,9 @@ import { TerminalView } from '@/components/TerminalView'
 import { MetricsPanel } from '@/components/MetricsPanel'
 import { ServicesPanel } from '@/components/ServicesPanel'
 import { AuditPanel } from '@/components/AuditPanel'
+import { DatabasePanel } from '@/components/DatabasePanel'
+import { SecurityPanel } from '@/components/SecurityPanel'
+import { NetworkPanel } from '@/components/NetworkPanel'
 import { ConnectionModal } from '@/components/ConnectionModal'
 import { EmptyState } from '@/components/EmptyState'
 import { Toasts } from '@/components/Toasts'
@@ -166,6 +169,9 @@ export default function App() {
                 {tab.kind === 'monitor' && <MetricsPanel profileId={tab.profileId} />}
                 {tab.kind === 'services' && <ServicesPanel profileId={tab.profileId} />}
                 {tab.kind === 'audit' && <AuditPanel />}
+                {tab.kind === 'database' && <DatabasePanel profileId={tab.profileId} />}
+                {tab.kind === 'security' && <SecurityPanel profileId={tab.profileId} />}
+                {tab.kind === 'network' && <NetworkPanel profileId={tab.profileId} />}
               </section>
             ))
           )}

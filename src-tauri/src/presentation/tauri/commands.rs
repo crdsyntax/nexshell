@@ -1,14 +1,26 @@
 use crate::application::audit::AuditEvent;
+use crate::application::cron::CronManager;
+use crate::application::database::DatabaseManager;
 use crate::application::filesystem::FilesystemManager;
+use crate::application::incident::IncidentManager;
+use crate::application::network::NetworkManager;
+use crate::application::pm2::{Pm2Action, Pm2Manager};
 use crate::application::processes::{ProcessManager, ProcessSignal};
+use crate::application::remediation;
+use crate::application::security::SecurityManager;
 use crate::application::services::{ServiceAction, ServiceManager, WebService};
+use crate::application::ssh_access::SshAccessManager;
+use crate::application::sudoers::SudoersManager;
 use crate::application::terminal::TerminalOptions;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    ConfigContent, ConfigEntry, ConnectionProfile, ExecOutput, ExecutionLog, FileDeleteResult,
-    FileProperties, KeyProbe, LargeFile, LogFilter, PoolStats, ProcessKillResult, ProcessLocation,
-    ProfileView, ServerInfo, ServiceActionResult, ServiceStatus, TerminalInfo, TestResult,
-    WebServiceInfo,
+    ConfigContent, ConfigEntry, ConnectionProfile, CronBackupSummary, CronDeleteResult, CronReport,
+    DbInfo, DbLoginTest, DbPasswordResult, DbUser, ExecOutput, ExecutionLog, FileDeleteResult,
+    FileProperties, IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogFilter,
+    NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats, ProcessKillResult, ProcessLocation,
+    ProfileView, SecurityAuditSummary, SecurityFixResult, SecurityReport, ServerInfo,
+    ServiceActionResult, ServiceStatus, SshActionResult, SshConfig, SshKey, SudoersReport,
+    TerminalInfo, TestResult, WebServiceInfo,
 };
 use crate::state::AppState;
 use std::time::{Duration, Instant};
@@ -503,4 +515,569 @@ pub fn clear_execution_logs(
 #[tauri::command]
 pub fn audit_db_path(state: State<'_, AppState>) -> String {
     state.audit.db_path()
+}
+
+// ---------------------------------------------------------------------------
+// MariaDB / MySQL
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn database_info(profile_id: String, state: State<'_, AppState>) -> AppResult<DbInfo> {
+    let profile = state.profiles.get(&profile_id)?;
+    DatabaseManager::info(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn database_users(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<DbUser>> {
+    let profile = state.profiles.get(&profile_id)?;
+    DatabaseManager::users(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn database_grants(
+    profile_id: String,
+    user: String,
+    host: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    DatabaseManager::grants(&state.pools, &profile, &user, &host).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn database_change_password(
+    profile_id: String,
+    user: String,
+    host: String,
+    password: String,
+    test_host: Option<String>,
+    test_port: Option<u16>,
+    test_database: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<DbPasswordResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = DatabaseManager::change_password(
+        &state.pools,
+        &profile,
+        &user,
+        &host,
+        &password,
+        test_host.as_deref(),
+        test_port,
+        test_database.as_deref(),
+    )
+    .await;
+
+    let mut event = AuditEvent::new(
+        "database",
+        "change-password",
+        match &result {
+            Ok(result) if result.ok => "success",
+            _ => "error",
+        },
+    )
+    .profile(Some(&profile_id), Some(&profile.name))
+    .target(format!("{user}@{host}"));
+    if let Ok(result) = &result {
+        if let Some(test) = &result.test {
+            event = event.metadata(serde_json::json!({
+                "login_test_ok": test.ok
+            }));
+        }
+        if !result.ok {
+            event = event.error("password change failed");
+        }
+    } else if let Err(error) = &result {
+        event = event.error(error.to_string());
+    }
+    state.audit.log(event);
+    result
+}
+
+#[tauri::command]
+pub async fn database_test_login(
+    profile_id: String,
+    user: String,
+    host: String,
+    password: String,
+    port: Option<u16>,
+    database: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<DbLoginTest> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = DatabaseManager::test_login(
+        &state.pools,
+        &profile,
+        &user,
+        &host,
+        port.unwrap_or(3306),
+        database.as_deref(),
+        &password,
+    )
+    .await;
+    state.audit.log(
+        AuditEvent::new(
+            "database",
+            "test-login",
+            match &result {
+                Ok(test) if test.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("{user}@{host}")),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn cron_list(profile_id: String, state: State<'_, AppState>) -> AppResult<CronReport> {
+    let profile = state.profiles.get(&profile_id)?;
+    CronManager::list(&state.pools, &profile).await
+}
+
+// ---------------------------------------------------------------------------
+// SSH access
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn cron_delete_entry(
+    profile_id: String,
+    source: String,
+    raw_line: String,
+    state: State<'_, AppState>,
+) -> AppResult<CronDeleteResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = CronManager::delete_entry(&state.pools, &profile, &source, &raw_line).await;
+    let backup = match &result {
+        Ok(deleted) => {
+            if !deleted.backup.is_empty() {
+                let _ = state.storage.insert_cron_backup(
+                    &profile_id,
+                    &profile.name,
+                    &deleted.source,
+                    &deleted.backup,
+                    &deleted.entries,
+                );
+            }
+            deleted.backup.clone()
+        }
+        Err(_) => String::new(),
+    };
+    state.audit.log(
+        AuditEvent::new(
+            "cron",
+            "delete-entry",
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(source)
+        .metadata(serde_json::json!({ "entry": raw_line, "backup": backup })),
+    );
+    result
+}
+
+#[tauri::command]
+pub fn cron_list_backups(
+    profile_id: Option<String>,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<CronBackupSummary>> {
+    state.storage.list_cron_backups(
+        profile_id.as_deref().filter(|value| !value.is_empty()),
+        limit.unwrap_or(30),
+    )
+}
+
+#[tauri::command]
+pub async fn cron_restore_backup(backup_id: i64, state: State<'_, AppState>) -> AppResult<String> {
+    let backup = state
+        .storage
+        .get_cron_backup(backup_id)?
+        .ok_or_else(|| crate::error::AppError::Validation("backup not found".into()))?;
+    let profile = state.profiles.get(&backup.profile_id)?;
+    let output =
+        CronManager::restore_backup(&state.pools, &profile, &backup.source, &backup.backup_path)
+            .await?;
+    state.audit.log(
+        AuditEvent::new("cron", "restore", "success")
+            .profile(Some(&backup.profile_id), Some(&profile.name))
+            .target(&backup.source)
+            .metadata(serde_json::json!({ "backup": backup.backup_path })),
+    );
+    Ok(output)
+}
+
+#[tauri::command]
+pub async fn ssh_keys(profile_id: String, state: State<'_, AppState>) -> AppResult<Vec<SshKey>> {
+    let profile = state.profiles.get(&profile_id)?;
+    SshAccessManager::keys(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn ssh_config(profile_id: String, state: State<'_, AppState>) -> AppResult<SshConfig> {
+    let profile = state.profiles.get(&profile_id)?;
+    SshAccessManager::config(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn ssh_add_key(
+    profile_id: String,
+    user: String,
+    public_key: String,
+    state: State<'_, AppState>,
+) -> AppResult<SshActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = SshAccessManager::add_key(&state.pools, &profile, &user, &public_key).await;
+    state.audit.log(
+        AuditEvent::new(
+            "ssh-access",
+            "add-key",
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("{user}@{}", profile.host)),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn ssh_remove_key(
+    profile_id: String,
+    user: String,
+    public_key: String,
+    state: State<'_, AppState>,
+) -> AppResult<SshActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = SshAccessManager::remove_key(&state.pools, &profile, &user, &public_key).await;
+    state.audit.log(
+        AuditEvent::new(
+            "ssh-access",
+            "remove-key",
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("{user}@{}", profile.host)),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn ssh_set_key_only(
+    profile_id: String,
+    enabled: bool,
+    confirmed: bool,
+    state: State<'_, AppState>,
+) -> AppResult<SshActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = SshAccessManager::set_key_only(&state.pools, &profile, enabled, confirmed).await;
+    state.audit.log(
+        AuditEvent::new(
+            "ssh-access",
+            if enabled {
+                "disable-password"
+            } else {
+                "enable-password"
+            },
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("{}:{}", profile.host, profile.port)),
+    );
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Security audit
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn run_security_audit(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<SecurityReport> {
+    let profile = state.profiles.get(&profile_id)?;
+    let mut report = SecurityManager::audit(&state.pools, &profile).await?;
+    let id = state.storage.insert_security_audit(&report)?;
+    report.id = Some(id);
+    state.audit.log(
+        AuditEvent::new("security", "audit", "success")
+            .profile(Some(&profile_id), Some(&profile.name))
+            .target("security-audit")
+            .duration(report.duration_ms)
+            .metadata(serde_json::json!({
+                "score": report.score,
+                "critical": report.summary.critical,
+                "high": report.summary.high,
+                "medium": report.summary.medium,
+                "low": report.summary.low
+            })),
+    );
+    Ok(report)
+}
+
+#[tauri::command]
+pub fn list_security_audits(
+    profile_id: Option<String>,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SecurityAuditSummary>> {
+    state.storage.list_security_audits(
+        profile_id.as_deref().filter(|value| !value.is_empty()),
+        limit.unwrap_or(20),
+    )
+}
+
+#[tauri::command]
+pub fn get_security_audit(
+    id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Option<SecurityReport>> {
+    state.storage.get_security_audit(id)
+}
+
+#[tauri::command]
+pub async fn apply_security_fix(
+    profile_id: String,
+    finding_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<SecurityFixResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = remediation::apply(&state.pools, &profile, &finding_id).await;
+    if let Ok(fix) = &result {
+        for backup in &fix.cron_backups {
+            if backup.backup.is_empty() {
+                continue;
+            }
+            let _ = state.storage.insert_cron_backup(
+                &profile_id,
+                &profile.name,
+                &backup.source,
+                &backup.backup,
+                &backup.entries,
+            );
+        }
+    }
+    state.audit.log(
+        AuditEvent::new(
+            "security",
+            "fix",
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&finding_id),
+    );
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Incident response
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn incident_scan(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<IncidentScan> {
+    let profile = state.profiles.get(&profile_id)?;
+    IncidentManager::scan(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn incident_kill_process(
+    profile_id: String,
+    pid: u32,
+    state: State<'_, AppState>,
+) -> AppResult<IncidentActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = IncidentManager::kill_process(&state.pools, &profile, pid).await;
+    state.audit.log(
+        AuditEvent::new(
+            "incident",
+            "kill-process",
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("pid={pid}")),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn incident_quarantine(
+    profile_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<IncidentActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = IncidentManager::quarantine(&state.pools, &profile, &path).await;
+    state.audit.log(
+        AuditEvent::new(
+            "incident",
+            "quarantine",
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&path),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn incident_block_ip(
+    profile_id: String,
+    ip: String,
+    block: bool,
+    state: State<'_, AppState>,
+) -> AppResult<IncidentActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = IncidentManager::block_ip(&state.pools, &profile, &ip, block).await;
+    state.audit.log(
+        AuditEvent::new(
+            "incident",
+            if block { "block-ip" } else { "unblock-ip" },
+            match &result {
+                Ok(result) if result.ok => "success",
+                _ => "error",
+            },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&ip),
+    );
+    result
+}
+
+// ---------------------------------------------------------------------------
+// PM2
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn pm2_list(profile_id: String, state: State<'_, AppState>) -> AppResult<Pm2Report> {
+    let profile = state.profiles.get(&profile_id)?;
+    Pm2Manager::list(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn pm2_action(
+    profile_id: String,
+    id: u32,
+    action: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    let action = Pm2Action::parse(&action)?;
+    let result = Pm2Manager::action(&state.pools, &profile, id, action).await;
+    state.audit.log(
+        AuditEvent::new(
+            "pm2",
+            format!("{action:?}").to_lowercase(),
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("pm2:{id}")),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn pm2_logs(
+    profile_id: String,
+    id: u32,
+    lines: Option<u32>,
+    state: State<'_, AppState>,
+) -> AppResult<Pm2Logs> {
+    let profile = state.profiles.get(&profile_id)?;
+    Pm2Manager::logs(&state.pools, &profile, id, lines.unwrap_or(200)).await
+}
+
+#[tauri::command]
+pub async fn node_processes(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<NodeProcess>> {
+    let profile = state.profiles.get(&profile_id)?;
+    crate::application::processes::ProcessManager::node_processes(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn network_scan(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<NetworkReport> {
+    let profile = state.profiles.get(&profile_id)?;
+    NetworkManager::scan(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn sudoers_report(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<SudoersReport> {
+    let profile = state.profiles.get(&profile_id)?;
+    SudoersManager::report(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn sudoers_remove_rule(
+    profile_id: String,
+    source: String,
+    line: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = SudoersManager::remove_rule(&state.pools, &profile, &source, &line).await;
+    state.audit.log(
+        AuditEvent::new(
+            "security",
+            "remove-sudoers-rule",
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&source)
+        .metadata(serde_json::json!({ "rule": line })),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn system_user_lock(
+    profile_id: String,
+    user: String,
+    locked: bool,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = SudoersManager::set_lock(&state.pools, &profile, &user, locked).await;
+    state.audit.log(
+        AuditEvent::new(
+            "security",
+            if locked { "lock-user" } else { "unlock-user" },
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&user),
+    );
+    result
 }

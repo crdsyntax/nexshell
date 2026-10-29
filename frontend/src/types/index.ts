@@ -144,6 +144,310 @@ export interface ProcessLocation {
   accessible: boolean
 }
 
+export interface DbInfo {
+  installed: boolean
+  client: string
+  version: string
+  hostname: string
+  port: number
+  socket: string
+  serviceState: string
+  canQuery: boolean
+  error: string | null
+}
+
+export interface DbUser {
+  user: string
+  host: string
+  plugin: string
+  system: boolean
+}
+
+export interface DbLoginTest {
+  ok: boolean
+  output: string
+  error: string | null
+}
+
+export interface DbPasswordResult {
+  ok: boolean
+  output: string
+  exitCode: number
+  test: DbLoginTest | null
+}
+
+export interface CronEntry {
+  source: string
+  schedule: string
+  user: string | null
+  command: string
+  raw: string
+  suspicious: boolean
+}
+
+export interface NodeProcess {
+  pid: number
+  user: string
+  cpu: number
+  mem: number
+  rssKb: number
+  elapsedSecs: number
+  command: string
+}
+
+export interface ListeningPort {
+  protocol: string
+  local: string
+  ip: string
+  port: number
+  process: string
+  pid: number | null
+  public: boolean
+}
+
+export interface NetworkConnection {
+  protocol: string
+  state: string
+  local: string
+  remote: string
+  process: string
+  pid: number | null
+}
+
+export interface NetworkReport {
+  hostname: string
+  generatedAt: number
+  listening: ListeningPort[]
+  connections: NetworkConnection[]
+  listeningSummary: string[]
+  stats: string[]
+}
+
+export interface SudoGroup {
+  name: string
+  gid: string
+  members: string[]
+}
+
+export interface SudoRule {
+  principal: string
+  host: string
+  runas: string
+  nopasswd: boolean
+  commands: string
+  source: string
+  raw: string
+}
+
+export interface SudoAccount {
+  user: string
+  exists: boolean
+  uid: string
+  gid: string
+  home: string
+  shell: string
+  passwordStatus: string
+  lastLogin: string
+  authorizedKeys: number
+  groups: string
+}
+
+export interface SudoersReport {
+  hostname: string
+  generatedAt: number
+  groups: SudoGroup[]
+  rules: SudoRule[]
+  accounts: SudoAccount[]
+  rootAccounts: string[]
+  configOk: boolean
+  configOutput: string
+}
+
+export interface Pm2Process {
+  id: number
+  name: string
+  namespace: string
+  status: string
+  pid: number | null
+  uptimeMs: number | null
+  restarts: number
+  cpu: number
+  memory: number
+  mode: string
+  script: string
+  cwd: string
+  version: string
+  outLog: string
+  errLog: string
+}
+
+export interface Pm2Report {
+  available: boolean
+  binary: string
+  processes: Pm2Process[]
+}
+
+export interface Pm2Logs {
+  id: number
+  name: string
+  outPath: string
+  errPath: string
+  stdout: string
+  stderr: string
+}
+
+export type Pm2ActionKind = 'start' | 'stop' | 'restart' | 'reload' | 'delete'
+
+export interface CronDeleteResult {
+  source: string
+  backup: string
+  output: string
+}
+
+export interface CronBackupSummary {
+  id: number
+  timestamp: number
+  profileId: string
+  profileName: string
+  source: string
+  backupPath: string
+  removed: number
+  entries: string[]
+}
+
+export interface SuspectProcess {
+  pid: number
+  user: string
+  exe: string
+  started: string
+  command: string
+}
+
+export interface SuspectFile {
+  path: string
+  mode: string
+  owner: string
+  size: number
+  modified: string
+}
+
+export interface SuspectConnection {
+  local: string
+  remote: string
+  ip: string
+  port: number
+  process: string
+  pid: number | null
+}
+
+export interface IncidentScan {
+  hostname: string
+  generatedAt: number
+  processes: SuspectProcess[]
+  files: SuspectFile[]
+  envHits: string[]
+  connections: SuspectConnection[]
+  authorizedKeys: string[]
+  units: string[]
+  shellHistory: string[]
+  containers: string[]
+}
+
+export interface IncidentActionResult {
+  ok: boolean
+  output: string
+}
+
+export interface CronReport {
+  hostname: string
+  generatedAt: number
+  serviceState: string
+  entries: CronEntry[]
+  timers: string[]
+  atJobs: string[]
+  errors: string[]
+  recent: string[]
+}
+
+export interface SecurityFinding {
+  id: string
+  title: string
+  severity: string
+  category: string
+  status: string
+  detail: string
+  evidence: string
+  remediation: string
+  fixable?: boolean
+}
+
+export interface SecurityFixResult {
+  findingId: string
+  ok: boolean
+  output: string
+}
+
+export interface SecuritySummary {
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+  passed: number
+}
+
+export interface SecurityReport {
+  id: number | null
+  timestamp: number
+  profileId: string
+  profileName: string
+  hostname: string
+  score: number
+  summary: SecuritySummary
+  findings: SecurityFinding[]
+  cron: CronReport | null
+  durationMs: number
+}
+
+export interface SecurityAuditSummary {
+  id: number
+  timestamp: number
+  profileId: string
+  profileName: string
+  score: number
+  critical: number
+  high: number
+  medium: number
+  low: number
+  findings: number
+}
+
+export interface SshKey {
+  user: string
+  path: string
+  keyType: string
+  comment: string
+  fingerprint: string
+  raw: string
+}
+
+export interface SshConfig {
+  pubkeyAuthentication: string
+  passwordAuthentication: string
+  kbdInteractiveAuthentication: string
+  permitRootLogin: string
+  configTestOk: boolean
+  dropinPresent: boolean
+  dropinPath: string
+  output: string
+}
+
+export interface SshActionResult {
+  ok: boolean
+  output: string
+  config: SshConfig | null
+}
+
 export interface ExecutionLog {
   id: number
   timestamp: number
@@ -276,7 +580,14 @@ export interface ExecOutput {
   exitStatus: number
 }
 
-export type TabKind = 'terminal' | 'monitor' | 'services' | 'audit'
+export type TabKind =
+  | 'terminal'
+  | 'monitor'
+  | 'services'
+  | 'audit'
+  | 'database'
+  | 'security'
+  | 'network'
 export type TabStatus = 'connecting' | 'connected' | 'closed' | 'error'
 
 export interface WorkspaceTab {

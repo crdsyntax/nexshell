@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { monitorService } from '@/services/monitor.service'
 import { processService } from '@/services/process.service'
+import { pm2Service } from '@/services/pm2.service'
 import { openProcessTerminal } from '@/lib/actions'
 import { LargeFilesModal } from '@/components/LargeFilesModal'
 import {
@@ -9,12 +10,17 @@ import {
   AlertIcon,
   ClockIcon,
   CpuIcon,
+  FileIcon,
   FolderIcon,
   MemoryIcon,
   NetworkIcon,
+  PlayIcon,
   RefreshIcon,
+  RestartIcon,
   ServerIcon,
+  StopIcon,
   TerminalIcon,
+  TrashIcon,
   XIcon,
 } from '@/components/Icons'
 import {
@@ -24,7 +30,15 @@ import {
   percent,
   pressureLevel,
 } from '@/lib/format'
-import type { MetricsHistory, ProcessInfo } from '@/types'
+import type {
+  MetricsHistory,
+  NodeProcess,
+  Pm2ActionKind,
+  Pm2Logs,
+  Pm2Process,
+  Pm2Report,
+  ProcessInfo,
+} from '@/types'
 
 interface MetricsPanelProps {
   profileId: string
@@ -112,6 +126,25 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
   const [killSignal, setKillSignal] = useState<'TERM' | 'INT' | 'KILL'>('TERM')
   const [killBusy, setKillBusy] = useState(false)
   const [killError, setKillError] = useState<string | null>(null)
+
+  const [nodeProcesses, setNodeProcesses] = useState<NodeProcess[]>([])
+  const [nodeLoading, setNodeLoading] = useState(false)
+  const [nodeError, setNodeError] = useState<string | null>(null)
+
+  const [pm2, setPm2] = useState<Pm2Report | null>(null)
+  const [pm2Loading, setPm2Loading] = useState(false)
+  const [pm2Error, setPm2Error] = useState<string | null>(null)
+  const [pm2Target, setPm2Target] = useState<{
+    process: Pm2Process
+    action: Pm2ActionKind
+  } | null>(null)
+  const [pm2Busy, setPm2Busy] = useState(false)
+  const [pm2Result, setPm2Result] = useState<string | null>(null)
+  const [logsTarget, setLogsTarget] = useState<Pm2Process | null>(null)
+  const [logs, setLogs] = useState<Pm2Logs | null>(null)
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsTab, setLogsTab] = useState<'stdout' | 'stderr'>('stdout')
+  const [logsLines, setLogsLines] = useState(200)
   const [largeFilesOpen, setLargeFilesOpen] = useState(false)
   const [nonce, setNonce] = useState(0)
   const [starting, setStarting] = useState(true)
@@ -141,6 +174,77 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
       setKillError(String(error))
     } finally {
       setKillBusy(false)
+    }
+  }
+
+  const loadNode = async () => {
+    setNodeLoading(true)
+    setNodeError(null)
+    try {
+      setNodeProcesses(await processService.nodeProcesses(profileId))
+    } catch (error) {
+      setNodeError(String(error))
+    } finally {
+      setNodeLoading(false)
+    }
+  }
+
+  const loadPm2 = async () => {
+    setPm2Loading(true)
+    setPm2Error(null)
+    try {
+      setPm2(await pm2Service.list(profileId))
+    } catch (error) {
+      const message = String(error)
+      setPm2Error(message)
+      pushToast('error', message)
+    } finally {
+      setPm2Loading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadPm2()
+    void loadNode()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId])
+
+  const runPm2Action = async () => {
+    if (!pm2Target) return
+    setPm2Busy(true)
+    setPm2Result(null)
+    try {
+      const output = await pm2Service.action(
+        profileId,
+        pm2Target.process.id,
+        pm2Target.action,
+      )
+      pushToast('success', output || `pm2 ${pm2Target.action} ok`)
+      setPm2Target(null)
+      await loadPm2()
+    } catch (error) {
+      setPm2Result(String(error))
+    } finally {
+      setPm2Busy(false)
+    }
+  }
+
+  const openLogs = async (process: Pm2Process) => {
+    setLogsTarget(process)
+    setLogs(null)
+    setLogsTab('stdout')
+    await loadLogs(process, logsLines)
+  }
+
+  const loadLogs = async (process: Pm2Process, lines: number) => {
+    setLogsLoading(true)
+    setPm2Result(null)
+    try {
+      setLogs(await pm2Service.logs(profileId, process.id, lines))
+    } catch (error) {
+      setPm2Result(String(error))
+    } finally {
+      setLogsLoading(false)
     }
   }
 
@@ -382,9 +486,10 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
         </div>
       </section>
 
-      <section className="process-section">
-        <div className="section-title">
-          <h3>Top processes</h3>
+      <div className="monitor-columns">
+        <section className="process-section">
+          <div className="section-title">
+            <h3>Top processes</h3>
           <span>sorted by CPU · sampled {new Date(snapshot.timestamp * 1000).toLocaleTimeString()}</span>
         </div>
         <div className="process-table">
@@ -439,6 +544,187 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
           ))}
           {snapshot.processes.length === 0 && (
             <div className="process-table__empty">no process data returned</div>
+          )}
+        </div>
+        </section>
+
+        <section className="pm2-section">
+        <div className="section-title">
+          <h3>PM2 processes</h3>
+          <div className="pm2-title-actions">
+            <span>
+              {pm2?.available
+                ? `${pm2.processes.length} apps · ${pm2.binary || 'pm2'}`
+                : pm2
+                  ? 'pm2 not detected'
+                  : 'not loaded'}
+            </span>
+            <button
+              className="top-action"
+              onClick={() => void loadPm2()}
+              disabled={pm2Loading}
+            >
+              <RefreshIcon size={13} className={pm2Loading ? 'spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {pm2Error && (
+          <div className="inline-alert inline-alert--error">
+            <AlertIcon size={15} />
+            <span>{pm2Error}</span>
+          </div>
+        )}
+
+        {pm2?.available && (
+          <div className="pm2-table">
+            <div className="pm2-table__head">
+              <span>ID</span>
+              <span>APP</span>
+              <span>STATUS</span>
+              <span>CPU%</span>
+              <span>MEM</span>
+              <span>RESTARTS</span>
+              <span>UPTIME</span>
+              <span>ACTIONS</span>
+            </div>
+            {pm2.processes.map((process) => (
+              <div className="pm2-table__row" key={process.id}>
+                <span className="mono">{process.id}</span>
+                <span
+                  className="mono pm2-name"
+                  title={`${process.script || process.name}\n${process.cwd}`}
+                >
+                  {process.name}
+                  {process.namespace !== 'default' && process.namespace ? (
+                    <small>{process.namespace}</small>
+                  ) : null}
+                </span>
+                <span className={`pm2-status is-${process.status}`}>{process.status}</span>
+                <span className="mono">{process.cpu.toFixed(1)}</span>
+                <span className="mono">{formatKb(Math.round(process.memory / 1024))}</span>
+                <span className="mono">{process.restarts}</span>
+                <span className="mono">
+                  {process.uptimeMs && process.status === 'online'
+                    ? formatUptime(Math.max(0, (Date.now() - process.uptimeMs) / 1000))
+                    : '—'}
+                </span>
+                <div className="process-actions">
+                  {process.status === 'online' ? (
+                    <button
+                      className="icon-button"
+                      title="Stop this app"
+                      onClick={() => {
+                        setPm2Result(null)
+                        setPm2Target({ process, action: 'stop' })
+                      }}
+                    >
+                      <StopIcon size={13} />
+                    </button>
+                  ) : (
+                    <button
+                      className="icon-button"
+                      title="Start this app"
+                      onClick={() => {
+                        setPm2Result(null)
+                        setPm2Target({ process, action: 'start' })
+                      }}
+                    >
+                      <PlayIcon size={13} />
+                    </button>
+                  )}
+                  <button
+                    className="icon-button"
+                    title="Restart this app"
+                    onClick={() => {
+                      setPm2Result(null)
+                      setPm2Target({ process, action: 'restart' })
+                    }}
+                  >
+                    <RestartIcon size={13} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    title="Open out/error logs"
+                    onClick={() => void openLogs(process)}
+                  >
+                    <FileIcon size={13} />
+                  </button>
+                  <button
+                    className="icon-button is-danger"
+                    title="Remove this app from the pm2 list"
+                    onClick={() => {
+                      setPm2Result(null)
+                      setPm2Target({ process, action: 'delete' })
+                    }}
+                  >
+                    <TrashIcon size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {pm2.processes.length === 0 && (
+              <div className="process-table__empty">pm2 has no processes</div>
+            )}
+          </div>
+        )}
+
+        {pm2 && !pm2.available && (
+          <div className="process-table__empty">
+            pm2 is not installed for this SSH user (checked PATH, /usr/local/bin and
+            nvm).
+          </div>
+        )}
+        </section>
+      </div>
+
+      <section className="node-section">
+        <div className="section-title">
+          <h3>Node processes</h3>
+          <div className="pm2-title-actions">
+            <span>{nodeProcesses.length} running</span>
+            <button
+              className="top-action"
+              onClick={() => void loadNode()}
+              disabled={nodeLoading}
+            >
+              <RefreshIcon size={13} className={nodeLoading ? 'spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+        {nodeError && (
+          <div className="inline-alert inline-alert--error">
+            <AlertIcon size={15} />
+            <span>{nodeError}</span>
+          </div>
+        )}
+        <div className="process-table node-table">
+          <div className="process-table__head">
+            <span>PID</span>
+            <span>USER</span>
+            <span>CPU%</span>
+            <span>MEM%</span>
+            <span>RSS</span>
+            <span>UPTIME</span>
+            <span>COMMAND</span>
+          </div>
+          {nodeProcesses.map((process) => (
+            <div className="process-table__row" key={process.pid}>
+              <span className="mono">{process.pid}</span>
+              <span>{process.user}</span>
+              <span className={`mono ${process.cpu > 50 ? 'is-hot' : ''}`}>
+                {process.cpu.toFixed(1)}
+              </span>
+              <span className="mono">{process.mem.toFixed(1)}</span>
+              <span className="mono">{formatKb(process.rssKb)}</span>
+              <span className="mono">{formatUptime(process.elapsedSecs)}</span>
+              <span className="mono process-table__cmd" title={process.command}>
+                {process.command}
+              </span>
+            </div>
+          ))}
+          {nodeProcesses.length === 0 && !nodeLoading && (
+            <div className="process-table__empty">no node processes found</div>
           )}
         </div>
       </section>
@@ -534,6 +820,188 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
                 disabled={killBusy}
               >
                 {killBusy ? 'Sending…' : `Send SIG${killSignal}`}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {pm2Target && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !pm2Busy) setPm2Target(null)
+          }}
+        >
+          <div className="modal modal--compact" role="dialog" aria-modal="true">
+            <header className="modal__header">
+              <div>
+                <h2>
+                  pm2 {pm2Target.action}: {pm2Target.process.name}
+                </h2>
+                <p>
+                  id {pm2Target.process.id} · {pm2Target.process.mode} ·{' '}
+                  {pm2Target.process.status}
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setPm2Target(null)}
+                disabled={pm2Busy}
+                title="Close"
+              >
+                <XIcon size={16} />
+              </button>
+            </header>
+            <div className="modal__body">
+              <div className="process-summary">
+                <div>
+                  <span>Script</span>
+                  <strong className="mono">{pm2Target.process.script || '—'}</strong>
+                </div>
+                <div>
+                  <span>Working dir</span>
+                  <strong className="mono">{pm2Target.process.cwd || '—'}</strong>
+                </div>
+                <div>
+                  <span>Restarts</span>
+                  <strong className="mono">{pm2Target.process.restarts}</strong>
+                </div>
+                <div>
+                  <span>Memory</span>
+                  <strong className="mono">
+                    {formatKb(Math.round(pm2Target.process.memory / 1024))}
+                  </strong>
+                </div>
+              </div>
+              <div
+                className={`inline-alert ${
+                  pm2Target.action === 'delete' ? 'inline-alert--error' : 'inline-alert--warn'
+                }`}
+              >
+                <AlertIcon size={15} />
+                <span>
+                  {pm2Target.action === 'delete'
+                    ? 'Delete removes the app from the pm2 list (it will not start on reboot). The application files are not touched.'
+                    : pm2Target.action === 'stop'
+                      ? 'Stop keeps the app in the list but takes it offline until you start it again.'
+                      : `pm2 ${pm2Target.action} will interrupt active connections while the app restarts.`}
+                </span>
+              </div>
+              {pm2Result && (
+                <div className="inline-alert inline-alert--error">
+                  <AlertIcon size={15} />
+                  <span>{pm2Result}</span>
+                </div>
+              )}
+            </div>
+            <footer className="modal__footer">
+              <button
+                className="ghost-button"
+                onClick={() => setPm2Target(null)}
+                disabled={pm2Busy}
+              >
+                Cancel
+              </button>
+              <button
+                className={pm2Target.action === 'delete' ? 'danger-button' : 'primary-button'}
+                onClick={() => void runPm2Action()}
+                disabled={pm2Busy}
+              >
+                {pm2Busy ? 'Applying…' : `pm2 ${pm2Target.action}`}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {logsTarget && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !logsLoading) setLogsTarget(null)
+          }}
+        >
+          <div className="modal modal--logs" role="dialog" aria-modal="true">
+            <header className="modal__header">
+              <div>
+                <h2>
+                  pm2 logs · {logsTarget.name}
+                  <span className="panel__sub">id {logsTarget.id}</span>
+                </h2>
+                <p>
+                  {logsTab === 'stdout' ? logs?.outPath : logs?.errPath || 'log path'}
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setLogsTarget(null)}
+                disabled={logsLoading}
+                title="Close"
+              >
+                <XIcon size={16} />
+              </button>
+            </header>
+            <div className="modal__body pm2-logs-body">
+              <div className="pm2-logs-toolbar">
+                <div className="security-tabs">
+                  <button
+                    className={logsTab === 'stdout' ? 'is-active' : ''}
+                    onClick={() => setLogsTab('stdout')}
+                  >
+                    stdout
+                  </button>
+                  <button
+                    className={logsTab === 'stderr' ? 'is-active' : ''}
+                    onClick={() => setLogsTab('stderr')}
+                  >
+                    stderr
+                  </button>
+                </div>
+                <label className="select-inline">
+                  <span>lines</span>
+                  <select
+                    value={logsLines}
+                    onChange={(event) => {
+                      const value = Number(event.target.value)
+                      setLogsLines(value)
+                      if (logsTarget) void loadLogs(logsTarget, value)
+                    }}
+                  >
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>1000</option>
+                  </select>
+                </label>
+                <button
+                  className="top-action"
+                  onClick={() => logsTarget && void loadLogs(logsTarget, logsLines)}
+                  disabled={logsLoading}
+                >
+                  <RefreshIcon size={13} className={logsLoading ? 'spin' : ''} /> Reload
+                </button>
+              </div>
+              {pm2Result && (
+                <div className="inline-alert inline-alert--error">
+                  <AlertIcon size={15} />
+                  <span>{pm2Result}</span>
+                </div>
+              )}
+              <pre className="pm2-log-pre">
+                {logsLoading
+                  ? 'reading logs…'
+                  : logsTab === 'stdout'
+                    ? logs?.stdout || '(empty)'
+                    : logs?.stderr || '(empty)'}
+              </pre>
+            </div>
+            <footer className="modal__footer">
+              <span className="field-hint">
+                Tail leído directamente de {logs?.outPath ? 'los archivos de pm2' : 'pm2'}.
+              </span>
+              <button className="ghost-button" onClick={() => setLogsTarget(null)}>
+                Close
               </button>
             </footer>
           </div>

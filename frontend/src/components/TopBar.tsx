@@ -3,13 +3,18 @@ import {
   connectProfile,
   detectServerFor,
   openAudit,
+  openDatabase,
   openMonitor,
+  openNetwork,
+  openSecurity,
   openServices,
 } from '@/lib/actions'
 import {
   ActivityIcon,
+  DatabaseIcon,
   EditIcon,
   FileIcon,
+  NetworkIcon,
   RefreshIcon,
   ServerIcon,
   ShieldIcon,
@@ -25,6 +30,9 @@ interface TopBarProps {
 export function TopBar({ profile, onEdit }: TopBarProps) {
   const servers = useAppStore((state) => state.servers)
   const poolStats = useAppStore((state) => state.poolStats)
+  const tabs = useAppStore((state) => state.tabs)
+  const activeTabId = useAppStore((state) => state.activeTabId)
+  const activeKind = tabs.find((tab) => tab.id === activeTabId)?.kind
   const server = profile ? servers[profile.id] : undefined
   const stats = profile && poolStats?.profileId === profile.id ? poolStats : null
 
@@ -91,8 +99,26 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
       )}
 
       <div className="top-bar__actions">
-        <button className="top-action" onClick={() => openAudit()} title="Execution log">
+        <button
+          className={`top-action ${activeKind === 'audit' ? 'is-active' : ''}`}
+          onClick={() => openAudit()}
+          title="Execution log"
+        >
           <FileIcon size={14} /> Audit
+        </button>
+        <button
+          className={`top-action ${activeKind === 'database' ? 'is-active' : ''}`}
+          onClick={() => openDatabase()}
+          title="MariaDB / MySQL"
+        >
+          <DatabaseIcon size={14} /> DB
+        </button>
+        <button
+          className={`top-action ${activeKind === 'security' ? 'is-active' : ''}`}
+          onClick={() => openSecurity()}
+          title="Security"
+        >
+          <ShieldIcon size={14} /> Security
         </button>
         {profile && (
           <>
@@ -110,10 +136,23 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
             >
               <ShieldIcon size={14} /> Connect
             </button>
-            <button className="top-action" onClick={() => openMonitor(profile)}>
+            <button
+              className={`top-action ${activeKind === 'network' ? 'is-active' : ''}`}
+              onClick={() => openNetwork(profile)}
+              title="Open ports and connections"
+            >
+              <NetworkIcon size={14} /> Network
+            </button>
+            <button
+              className={`top-action ${activeKind === 'monitor' ? 'is-active' : ''}`}
+              onClick={() => openMonitor(profile)}
+            >
               <ActivityIcon size={14} /> Monitor
             </button>
-            <button className="top-action" onClick={() => openServices(profile)}>
+            <button
+              className={`top-action ${activeKind === 'services' ? 'is-active' : ''}`}
+              onClick={() => openServices(profile)}
+            >
               <ServerIcon size={14} /> Services
             </button>
             <button

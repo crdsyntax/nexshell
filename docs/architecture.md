@@ -138,5 +138,16 @@ UI             ServiceManager                     Host
   parsea tamaños humanos y ofrece `stat`/`du` y `rm` con las mismas reglas de elevación.
 - **Auditoría**: `application/audit.rs` persiste eventos; `PoolManager` los genera para
   conexiones/exec, `TerminalManager` para sesiones y los comandos para test/detección.
+- **Seguridad**: `application/security.rs` recoge evidencias y genera hallazgos;
+  `CronManager::delete_entry` valida la fuente, verifica la línea exacta, crea un backup
+  y reescribe el crontab/archivo;
+  `application/cron.rs` inventaría persistencia programada; `application/ssh_access.rs`
+  gestiona claves y el drop-in key-only; `application/database.rs` administra usuarios
+  MariaDB/MySQL; `application/remediation.rs` aplica fixes con validación, verificación
+  y rollback; `application/incident.rs` escanea IOCs y ejecuta contención (kill,
+  cuarentena, bloqueo de IP); `application/pm2.rs` lista y opera las apps de PM2 y
+  lee sus logs; `application/network.rs` inventaría sockets y conexiones;
+  `application/sudoers.rs` audita grupos y reglas de sudo. Los backups de cron se guardan en
+  `/var/backups/2shell/cron` y se indexan en SQLite.
 - **Nuevo método de auth**: extender `AuthMethod` y el match en `SshConnection::connect`.
 - **Nuevo transporte (túnel)**: reutilizar el pool y añadir un método a `SshConnection`.

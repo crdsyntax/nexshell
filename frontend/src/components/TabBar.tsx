@@ -1,11 +1,23 @@
 import { useAppStore } from '@/store/useAppStore'
-import { ActivityIcon, FileIcon, ServerIcon, TerminalIcon, XIcon } from '@/components/Icons'
+import {
+  ActivityIcon,
+  DatabaseIcon,
+  FileIcon,
+  NetworkIcon,
+  ServerIcon,
+  ShieldIcon,
+  TerminalIcon,
+  XIcon,
+} from '@/components/Icons'
 import type { TabKind } from '@/types'
 
 function TabIcon({ kind }: { kind: TabKind }) {
   if (kind === 'monitor') return <ActivityIcon size={14} />
   if (kind === 'services') return <ServerIcon size={14} />
   if (kind === 'audit') return <FileIcon size={14} />
+  if (kind === 'database') return <DatabaseIcon size={14} />
+  if (kind === 'security') return <ShieldIcon size={14} />
+  if (kind === 'network') return <NetworkIcon size={14} />
   return <TerminalIcon size={14} />
 }
 

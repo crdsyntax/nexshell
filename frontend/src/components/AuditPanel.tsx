@@ -21,6 +21,10 @@ const CATEGORIES = [
   'command',
   'profile',
   'detect',
+  'database',
+  'security',
+  'cron',
+  'ssh-access',
   'ssh',
   'monitor',
 ]
