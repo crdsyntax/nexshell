@@ -47,11 +47,13 @@ export default function App() {
   const tabs = useAppStore((state) => state.tabs)
   const activeTabId = useAppStore((state) => state.activeTabId)
   const poolStats = useAppStore((state) => state.poolStats)
+  const servers = useAppStore((state) => state.servers)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Profile | null>(null)
   const listenersReady = useRef(false)
 
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
+  const activeServer = activeProfile ? servers[activeProfile.id] : undefined
 
   useEffect(() => {
     refreshProfiles().catch((error) => {
@@ -145,11 +147,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar onNew={openNew} onEdit={openEdit} />
+      <TopBar profile={activeProfile} onEdit={openEdit} />
 
-      <div className="app-main">
-        <TopBar profile={activeProfile} onEdit={openEdit} />
-        <TabBar />
+      <div className="app-body">
+        <Sidebar onNew={openNew} onEdit={openEdit} />
+
+        <div className="app-main">
+          <TabBar />
 
         <div className="workspace">
           {!profilesLoaded ? (
@@ -186,19 +190,29 @@ export default function App() {
                   : ''
               }`}
             />
-            <span>{activeProfile ? `${activeProfile.username}@${activeProfile.host}` : 'no profile selected'}</span>
+            <span className="status-target">
+              {activeProfile
+                ? `${activeProfile.username.toUpperCase()}@${activeProfile.host}`
+                : 'NO PROFILE SELECTED'}
+            </span>
             {poolStats && poolStats.profileId === activeProfileId && (
               <span className="status-bar__metric">
-                pool {poolStats.inUse}/{poolStats.maxConnections} in use · {poolStats.idle} idle
+                POOL {poolStats.inUse}/{poolStats.maxConnections}{' '}
+                {poolStats.total > 0 ? 'ACTIVE' : 'IDLE'} · {poolStats.idle} STANDBY
               </span>
             )}
           </div>
           <div className="status-bar__right">
-            <span>SSH2 · AES-256-GCM vault</span>
+            <span>SSH2</span>
+            <span className="status-bar__sep" />
+            <span className={`status-rtt ${activeServer && activeServer.latencyMs < 60 ? 'is-good' : ''}`}>
+              {activeServer ? `${activeServer.latencyMs} ms` : '—'}
+            </span>
             <span className="status-bar__sep" />
             <span>{tabs.length} tab{tabs.length === 1 ? '' : 's'}</span>
           </div>
-        </footer>
+          </footer>
+        </div>
       </div>
 
       <ConnectionModal

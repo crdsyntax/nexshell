@@ -19,12 +19,23 @@ import {
   ServerIcon,
   ShieldIcon,
 } from '@/components/Icons'
+import { Logo } from '@/components/Logo'
 import { shortFingerprint } from '@/lib/format'
 import type { Profile } from '@/types'
 
 interface TopBarProps {
   profile: Profile | null
   onEdit: (profile: Profile) => void
+}
+
+const ENV_LABEL: Record<string, string> = {
+  production: 'PRD',
+  staging: 'STG',
+  development: 'DEV',
+}
+
+function envLabel(environment: string): string {
+  return ENV_LABEL[environment] ?? environment.slice(0, 3).toUpperCase()
 }
 
 export function TopBar({ profile, onEdit }: TopBarProps) {
@@ -36,135 +47,79 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
   const server = profile ? servers[profile.id] : undefined
   const stats = profile && poolStats?.profileId === profile.id ? poolStats : null
 
+  const action = (kind: string) => (activeKind === kind ? 'is-active' : '')
+
   return (
     <header className="top-bar">
-      <div className="top-bar__identity">
-        {profile ? (
-          <>
-            <span className="profile-dot" style={{ background: profile.color }} />
-            <div className="top-bar__text">
-              <div className="top-bar__title">
-                {profile.name}
-                <span className={`env-chip env-${profile.environment}`}>
-                  {profile.environment}
-                </span>
-              </div>
-              <div className="top-bar__subtitle">
-                <span>
-                  {profile.username}@{profile.host}:{profile.port}
-                </span>
-                {server && (
-                  <>
-                    <span className="subtitle-sep">/</span>
-                    <span title={server.osName}>{server.osName}</span>
-                    <span className="subtitle-sep">/</span>
-                    <span>{server.kernel}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="top-bar__text">
-            <div className="top-bar__title">No host selected</div>
-            <div className="top-bar__subtitle">Create a connection to begin</div>
-          </div>
-        )}
+      <div className="top-bar__brand">
+        <Logo size={24} />
+        <span className="top-bar__wordmark">2Shell</span>
       </div>
 
-      {profile && (
-        <div className="top-bar__chips">
-          {server && (
-            <span className="info-chip" title={server.fingerprint}>
-              <ShieldIcon size={13} />
-              {shortFingerprint(server.fingerprint)}
-            </span>
-          )}
-          {server && (
-            <span className="info-chip">
-              {server.distroFamily} · {server.arch || 'unknown arch'}
-            </span>
-          )}
-          {server && (
-            <span className="info-chip">
-              {server.cpuCount} vCPU · {Math.round(server.memTotalKb / 1024)} MiB
-            </span>
-          )}
+      <div className="top-bar__divider" />
+
+      {profile ? (
+        <div className="top-bar__host">
+          <span className="host-env">{envLabel(profile.environment)}</span>
+          <strong className="host-name">{profile.name}</strong>
+          <span className="host-target">
+            {profile.username}@{profile.host}
+            {profile.port !== 22 ? `:${profile.port}` : ''}
+          </span>
           {stats && (
-            <span className={`info-chip ${stats.total > 0 ? 'is-live' : ''}`}>
+            <span className="host-pool">
               pool {stats.inUse}/{stats.maxConnections}
             </span>
           )}
         </div>
+      ) : (
+        <div className="top-bar__host top-bar__host--empty">NO HOST SELECTED</div>
       )}
 
-      <div className="top-bar__actions">
-        <button
-          className={`top-action ${activeKind === 'audit' ? 'is-active' : ''}`}
-          onClick={() => openAudit()}
-          title="Execution log"
-        >
-          <FileIcon size={14} /> Audit
+      <nav className="top-bar__actions">
+        <button className={`top-action ${action('audit')}`} onClick={() => openAudit()}>
+          <FileIcon size={13} /> Audit
         </button>
-        <button
-          className={`top-action ${activeKind === 'database' ? 'is-active' : ''}`}
-          onClick={() => openDatabase()}
-          title="MariaDB / MySQL"
-        >
-          <DatabaseIcon size={14} /> DB
+        <button className={`top-action ${action('database')}`} onClick={() => openDatabase()}>
+          <DatabaseIcon size={13} /> DB
         </button>
-        <button
-          className={`top-action ${activeKind === 'security' ? 'is-active' : ''}`}
-          onClick={() => openSecurity()}
-          title="Security"
-        >
-          <ShieldIcon size={14} /> Security
+        <button className={`top-action ${action('security')}`} onClick={() => openSecurity()}>
+          <ShieldIcon size={13} /> Security
         </button>
         {profile && (
           <>
             <button
               className="top-action"
               onClick={() => void detectServerFor(profile.id, true)}
-              title="Detect operating system, services and resources"
+              title={server ? `Fingerprint ${shortFingerprint(server.fingerprint)}` : 'Detect server'}
             >
-              <RefreshIcon size={14} /> Detect
+              <RefreshIcon size={13} /> Detect
             </button>
             <button
               className="top-action"
               onClick={() => void connectProfile(profile.id)}
               title="Open a pooled SSH transport"
             >
-              <ShieldIcon size={14} /> Connect
+              <ShieldIcon size={13} /> Connect
+            </button>
+            <button className={`top-action ${action('network')}`} onClick={() => openNetwork(profile)}>
+              <NetworkIcon size={13} /> Network
+            </button>
+            <button className={`top-action ${action('monitor')}`} onClick={() => openMonitor(profile)}>
+              <ActivityIcon size={13} /> Monitor
             </button>
             <button
-              className={`top-action ${activeKind === 'network' ? 'is-active' : ''}`}
-              onClick={() => openNetwork(profile)}
-              title="Open ports and connections"
-            >
-              <NetworkIcon size={14} /> Network
-            </button>
-            <button
-              className={`top-action ${activeKind === 'monitor' ? 'is-active' : ''}`}
-              onClick={() => openMonitor(profile)}
-            >
-              <ActivityIcon size={14} /> Monitor
-            </button>
-            <button
-              className={`top-action ${activeKind === 'services' ? 'is-active' : ''}`}
+              className={`top-action ${action('services')}`}
               onClick={() => openServices(profile)}
             >
-              <ServerIcon size={14} /> Services
+              <ServerIcon size={13} /> Services
             </button>
-            <button
-              className="icon-button icon-button--bordered"
-              onClick={() => onEdit(profile)}
-              title="Edit connection"
-            >
-              <EditIcon size={15} />
+            <button className="icon-button icon-button--bordered" onClick={() => onEdit(profile)} title="Edit connection">
+              <EditIcon size={14} />
             </button>
           </>
         )}
-      </div>
+      </nav>
     </header>
   )
 }

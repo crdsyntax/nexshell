@@ -1,5 +1,10 @@
 import { ipc } from '@/lib/api'
-import type { NodeProcess, ProcessKillResult, ProcessLocation } from '@/types'
+import type {
+  NodeProcess,
+  ProcessDetails,
+  ProcessKillResult,
+  ProcessLocation,
+} from '@/types'
 
 export const processService = {
   locate: (profileId: string, pid: number) =>
@@ -8,4 +13,6 @@ export const processService = {
     ipc.invoke<ProcessKillResult>('process_kill', { profileId, pid, signal }),
   nodeProcesses: (profileId: string) =>
     ipc.invoke<NodeProcess[]>('node_processes', { profileId }),
+  details: (profileId: string, pid: number) =>
+    ipc.invoke<ProcessDetails>('process_details', { profileId, pid }),
 }

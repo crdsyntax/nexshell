@@ -25,6 +25,9 @@ echo __ROOT__
 awk -F: '$3 == 0 { print $1 }' /etc/passwd 2>/dev/null
 echo __VISUDO__
 visudo -c 2>&1
+visudo_rc=$?
+echo __VISUDO_RC__
+echo "$visudo_rc"
 exit 0
 "####;
 
@@ -86,9 +89,10 @@ impl SudoersManager {
             .unwrap_or_default();
 
         let visudo = section(&sections, "VISUDO").join("\n");
-        let config_ok = visudo.contains("parsed OK")
-            && !visudo.to_lowercase().contains("syntax error")
-            && !visudo.to_lowercase().contains("parse error");
+        let visudo_rc = section(&sections, "VISUDO_RC")
+            .iter()
+            .find_map(|line| line.trim().parse::<i32>().ok());
+        let config_ok = config_is_ok(visudo_rc, &visudo);
 
         Ok(SudoersReport {
             hostname: first(&sections, "HOST"),
@@ -183,21 +187,36 @@ chmod 700 "$bdir"
 backup="$bdir/{slug}-$(date +%s).bak"
 [ -f "$file" ] || {{ echo "sudoers file not found: $file" >&2; exit 1; }}
 grep -Fqx -- "$line" "$file" || {{ echo "rule not found in $file" >&2; exit 1; }}
+pre_out=$(visudo -c 2>&1) && pre_ok=1 || pre_ok=0
 cp -p "$file" "$backup"
 chmod 600 "$backup"
-grep -Fvx -- "$line" "$file" > "$file.2shell-tmp" || true
-cat "$file.2shell-tmp" > "$file"
-rm -f "$file.2shell-tmp"
-if ! visudo -c >/dev/null 2>&1; then
-  cp -p "$backup" "$file"
-  echo "visudo rejected the change; restored $file" >&2
-  exit 2
-fi
-if [ "$file" != "/etc/sudoers" ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$file"; then
+tmp="$file.2shell-tmp"
+grep -Fvx -- "$line" "$file" > "$tmp" || true
+if [ "$file" != "/etc/sudoers" ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$tmp"; then
+  rm -f "$tmp"
   rm -f "$file"
-  echo "removed empty drop-in $file"
+  result="removed empty drop-in $file"
+else
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
+  chown root:root "$file"
+  chmod 0440 "$file"
+  result="removed rule from $file"
 fi
-echo "removed rule from $file"
+if ! post_out=$(visudo -c 2>&1); then
+  if [ "$pre_ok" -eq 0 ] && [ "$pre_out" = "$post_out" ]; then
+    echo "WARNING: visudo -c still reports pre-existing errors unrelated to this change:" >&2
+    printf '%s\n' "$post_out" >&2
+  else
+    cp "$backup" "$file"
+    chown root:root "$file"
+    chmod 0440 "$file"
+    echo "visudo rejected the change; restored $file" >&2
+    printf '%s\n' "$post_out" >&2
+    exit 2
+  fi
+fi
+echo "$result"
 echo "BACKUP=$backup"
 "####,
             file = shell_quote(source),
@@ -247,6 +266,20 @@ async fn run_script(
         )));
     }
     Ok(combined)
+}
+
+/// `visudo -c` returns non-zero for syntax errors and also for permission
+/// problems in included files (`bad permissions`). The exit code is authoritative;
+/// the text heuristic is only a fallback for hosts that do not report it.
+fn config_is_ok(rc: Option<i32>, output: &str) -> bool {
+    if let Some(code) = rc {
+        return code == 0;
+    }
+    let lower = output.to_lowercase();
+    output.contains("parsed OK")
+        && !lower.contains("syntax error")
+        && !lower.contains("parse error")
+        && !lower.contains("bad permissions")
 }
 
 fn validate_rule_source(source: &str) -> AppResult<()> {
@@ -450,6 +483,27 @@ mod tests {
         assert!(validate_user("Bad User").is_err());
         assert!(validate_user("").is_err());
         assert!(validate_user("a;rm").is_err());
+    }
+
+    #[test]
+    fn treats_visudo_exit_code_as_authoritative() {
+        // Mode problems are reported as errors by visudo even when syntax parses.
+        let output = "/etc/sudoers.d/99-pakchoi: bad permissions, should be mode 0440\n/etc/sudoers: parsed OK";
+        assert!(!config_is_ok(Some(1), output));
+        assert!(config_is_ok(Some(0), "/etc/sudoers: parsed OK"));
+    }
+
+    #[test]
+    fn falls_back_to_text_when_exit_code_is_missing() {
+        assert!(config_is_ok(None, "/etc/sudoers: parsed OK"));
+        assert!(!config_is_ok(
+            None,
+            "/etc/sudoers: syntax error near line 3"
+        ));
+        assert!(!config_is_ok(
+            None,
+            "/etc/sudoers.d/x: bad permissions, should be mode 0440"
+        ));
     }
 
     #[test]

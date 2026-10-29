@@ -1,36 +1,50 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { attachTerminal, detachTerminal } from '@/lib/terminalBus'
 import { terminalService } from '@/services/terminal.service'
 import { useAppStore } from '@/store/useAppStore'
-import { AlertIcon, RefreshIcon, TerminalIcon } from '@/components/Icons'
+import { AlertIcon, FolderIcon, RefreshIcon, TerminalIcon } from '@/components/Icons'
+import { FileTree } from '@/components/FileTree'
 import type { WorkspaceTab } from '@/types'
 
 interface TerminalViewProps {
   tab: WorkspaceTab
 }
 
+/**
+ * Teaches the remote shell to emit OSC 7 on every prompt, so the file tree can
+ * follow `cd`. The trailing `clear` hides the injected line from the screen.
+ */
+const OSC7_INIT = [
+  'if [ -n "$ZSH_VERSION" ]; then',
+  `chpwd(){ printf '\\033]7;file://%s%s\\033\\\\' "\${HOST:-localhost}" "$PWD"; };`,
+  'precmd(){ chpwd; }; chpwd;',
+  'else',
+  `PROMPT_COMMAND='printf "\\033]7;file://%s%s\\033\\\\" "\${HOSTNAME:-localhost}" "$PWD"'"\${PROMPT_COMMAND:+;$PROMPT_COMMAND}";`,
+  'fi; clear',
+].join(' ') + '\n' 
+
 const THEME = {
-  background: '#0a0d13',
-  foreground: '#dbe4f3',
-  cursor: '#5eead4',
-  cursorAccent: '#0a0d13',
-  selectionBackground: '#2b3b55',
-  black: '#161c28',
-  red: '#f87171',
-  green: '#34d399',
+  background: '#0a0c0f',
+  foreground: '#e4e5e8',
+  cursor: '#fbbf24',
+  cursorAccent: '#0a0c0f',
+  selectionBackground: '#343c4d',
+  black: '#15181f',
+  red: '#ef4444',
+  green: '#a3e635',
   yellow: '#fbbf24',
   blue: '#60a5fa',
   magenta: '#c084fc',
   cyan: '#5eead4',
-  white: '#e5eaf3',
-  brightBlack: '#64748b',
+  white: '#e4e5e8',
+  brightBlack: '#5a6272',
   brightRed: '#fca5a5',
-  brightGreen: '#6ee7b7',
+  brightGreen: '#a3e635',
   brightYellow: '#fde68a',
-  brightBlue: '#93c5fd',
+  brightBlue: '#a3e635',
   brightMagenta: '#d8b4fe',
   brightCyan: '#99f6e4',
   brightWhite: '#f8fafc',
@@ -43,6 +57,7 @@ export function TerminalView({ tab }: TerminalViewProps) {
   const sessionRef = useRef<string | undefined>(undefined)
   const reconnectRef = useRef<() => void>(() => {})
   const mountedRef = useRef(false)
+  const [treeOpen, setTreeOpen] = useState(true)
 
   useEffect(() => {
     if (mountedRef.current || !containerRef.current) return
@@ -68,6 +83,19 @@ export function TerminalView({ tab }: TerminalViewProps) {
     termRef.current = term
 
     const store = () => useAppStore.getState()
+
+    const osc7 = term.parser.registerOscHandler(7, (data) => {
+      const url = data.replace(/^file:\/\//, '')
+      const slash = url.indexOf('/')
+      if (slash < 0) return true
+      try {
+        const path = decodeURIComponent(url.slice(slash))
+        if (path.startsWith('/')) store().setTerminalCwd(tab.id, path)
+      } catch {
+        // ignore malformed OSC 7 payloads
+      }
+      return true
+    })
 
     const inputDisposable = term.onData((data) => {
       const sessionId = sessionRef.current
@@ -110,6 +138,8 @@ export function TerminalView({ tab }: TerminalViewProps) {
         sessionRef.current = info.sessionId
         attachTerminal(info.sessionId, (bytes) => term.write(bytes))
         store().setTabSession(tab.id, info)
+        // Teach the remote shell to report its cwd via OSC 7.
+        void terminalService.write(info.sessionId, OSC7_INIT).catch(() => undefined)
         term.focus()
       } catch (error) {
         if (cancelled) return
@@ -152,6 +182,7 @@ export function TerminalView({ tab }: TerminalViewProps) {
       observer.disconnect()
       inputDisposable.dispose()
       resizeDisposable.dispose()
+      osc7.dispose()
       const sessionId = sessionRef.current
       if (sessionId) {
         detachTerminal(sessionId)
@@ -187,9 +218,25 @@ export function TerminalView({ tab }: TerminalViewProps) {
             : tab.status === 'connected'
               ? 'xterm-256color · PTY'
               : tab.status}
+          <button
+            className={`tree-toggle ${treeOpen ? 'is-active' : ''}`}
+            onClick={() => setTreeOpen((value) => !value)}
+            title={treeOpen ? 'Ocultar árbol de archivos' : 'Mostrar árbol de archivos'}
+          >
+            <FolderIcon size={13} />
+          </button>
         </div>
       </div>
-      <div ref={containerRef} className="terminal-view__terminal" />
+      <div className="terminal-body">
+        <div ref={containerRef} className="terminal-view__terminal" />
+        {treeOpen && (
+          <FileTree
+            profileId={tab.profileId}
+            tabId={tab.id}
+            onClose={() => setTreeOpen(false)}
+          />
+        )}
+      </div>
       {(tab.status === 'closed' || tab.status === 'error') && (
         <div className="terminal-overlay">
           <div className="terminal-overlay__card">

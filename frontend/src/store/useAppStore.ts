@@ -28,6 +28,7 @@ interface AppStore {
   activeTabId: string | null
   servers: Record<string, ServerInfo>
   metrics: Record<string, MetricsSnapshot>
+  terminalCwd: Record<string, string>
   history: Record<string, MetricsHistory>
   metricsErrors: Record<string, string>
   services: Record<string, WebServiceInfo[]>
@@ -50,6 +51,7 @@ interface AppStore {
   closeTab: (id: string) => void
   activateTab: (id: string) => void
   setTabSession: (tabId: string, session: TerminalInfo) => void
+  setTerminalCwd: (tabId: string, cwd: string) => void
   setTabStatus: (tabId: string, status: TabStatus, error?: string) => void
   setServerInfo: (profileId: string, info: ServerInfo) => void
   setMetrics: (profileId: string, snapshot: MetricsSnapshot) => void
@@ -77,6 +79,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   activeTabId: null,
   servers: {},
   metrics: {},
+  terminalCwd: {},
   history: {},
   metricsErrors: {},
   services: {},
@@ -308,6 +311,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const tab = state.tabs.find((item) => item.id === id)
       return tab ? { activeTabId: id, activeProfileId: tab.profileId } : {}
     }),
+
+  setTerminalCwd: (tabId, cwd) =>
+    set((state) =>
+      state.terminalCwd[tabId] === cwd
+        ? {}
+        : { terminalCwd: { ...state.terminalCwd, [tabId]: cwd } },
+    ),
 
   setTabSession: (tabId, session) =>
     set((state) => ({

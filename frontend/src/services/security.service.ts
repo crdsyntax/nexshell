@@ -2,6 +2,7 @@ import { ipc } from '@/lib/api'
 import type {
   SecurityAuditSummary,
   SecurityFixResult,
+  AccountOrigin,
   SecurityReport,
   SudoersReport,
 } from '@/types'
@@ -21,4 +22,6 @@ export const securityService = {
     ipc.invoke<string>('sudoers_remove_rule', { profileId, source, line }),
   setUserLock: (profileId: string, user: string, locked: boolean) =>
     ipc.invoke<string>('system_user_lock', { profileId, user, locked }),
+  accountOrigin: (profileId: string, user: string) =>
+    ipc.invoke<AccountOrigin>('account_origin', { profileId, user }),
 }

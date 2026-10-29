@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { monitorService } from '@/services/monitor.service'
 import { processService } from '@/services/process.service'
 import { pm2Service } from '@/services/pm2.service'
-import { openProcessTerminal } from '@/lib/actions'
+import { openProcessTerminal, openTerminalWithCommand } from '@/lib/actions'
 import { LargeFilesModal } from '@/components/LargeFilesModal'
 import {
   ActivityIcon,
@@ -33,6 +33,7 @@ import {
 import type {
   MetricsHistory,
   NodeProcess,
+  ProcessDetails,
   Pm2ActionKind,
   Pm2Logs,
   Pm2Process,
@@ -145,6 +146,14 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
   const [logsLoading, setLogsLoading] = useState(false)
   const [logsTab, setLogsTab] = useState<'stdout' | 'stderr'>('stdout')
   const [logsLines, setLogsLines] = useState(200)
+  const [injectCommand, setInjectCommand] = useState('')
+  const [stalled, setStalled] = useState(false)
+  const lastUpdateRef = useRef(Date.now())
+
+  const [monitorTarget, setMonitorTarget] = useState<Pm2Process | null>(null)
+  const [details, setDetails] = useState<ProcessDetails | null>(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
   const [largeFilesOpen, setLargeFilesOpen] = useState(false)
   const [nonce, setNonce] = useState(0)
   const [starting, setStarting] = useState(true)
@@ -209,6 +218,30 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId])
 
+  const snapshotStamp = useAppStore(
+    (state) => state.metrics[profileId]?.timestamp ?? null,
+  )
+
+  useEffect(() => {
+    lastUpdateRef.current = Date.now()
+    setStalled(false)
+  }, [snapshotStamp])
+
+  // Watchdog: if the backend watcher dies or the SSH link stalls, the panel used to
+  // freeze on the last sample. Restart the collector when no update arrives.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastUpdateRef.current < 12_000) return
+      lastUpdateRef.current = Date.now()
+      setStalled(true)
+      void monitorService
+        .stop(profileId)
+        .then(() => monitorService.start(profileId, interval))
+        .catch(() => undefined)
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [profileId, interval])
+
   const runPm2Action = async () => {
     if (!pm2Target) return
     setPm2Busy(true)
@@ -226,6 +259,37 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
       setPm2Result(String(error))
     } finally {
       setPm2Busy(false)
+    }
+  }
+
+  const openMonitor = async (process: Pm2Process) => {
+    setMonitorTarget(process)
+    setDetails(null)
+    setDetailsError(null)
+    if (process.pid === null) {
+      setDetailsError('La app está detenida: no hay PID que inspeccionar.')
+      return
+    }
+    setDetailsLoading(true)
+    try {
+      setDetails(await processService.details(profileId, process.pid))
+    } catch (error) {
+      setDetailsError(String(error))
+    } finally {
+      setDetailsLoading(false)
+    }
+  }
+
+  const refreshMonitor = async () => {
+    if (!monitorTarget?.pid) return
+    setDetailsLoading(true)
+    setDetailsError(null)
+    try {
+      setDetails(await processService.details(profileId, monitorTarget.pid))
+    } catch (error) {
+      setDetailsError(String(error))
+    } finally {
+      setDetailsLoading(false)
     }
   }
 
@@ -327,6 +391,11 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
           </p>
         </div>
         <div className="panel__actions">
+          {stalled && (
+            <span className="stall-badge">
+              <RefreshIcon size={12} className="spin" /> reconectando
+            </span>
+          )}
           <label className="select-inline">
             <span>interval</span>
             <select
@@ -366,7 +435,7 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
               {cpu.toFixed(1)}%
             </strong>
           </header>
-          <Sparkline values={historyView.cpu} color="#5eead4" />
+          <Sparkline values={historyView.cpu} color="#fbbf24" />
           <footer>{snapshot.cores.length} logical cores</footer>
         </article>
 
@@ -384,7 +453,7 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
             <span>{formatKb(snapshot.memUsedKb)} used</span>
             <span>{formatKb(snapshot.memTotalKb)} total</span>
           </div>
-          <Sparkline values={historyView.mem} color="#38bdf8" />
+          <Sparkline values={historyView.mem} color="#a3e635" />
           <footer>
             {formatKb(snapshot.memAvailableKb)} available · swap{' '}
             {formatKb(snapshot.swapUsedKb)}
@@ -436,8 +505,8 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
           <Sparkline
             values={historyView.rx}
             secondary={historyView.tx}
-            color="#a78bfa"
-            secondaryColor="#38bdf8"
+            color="#a3e635"
+            secondaryColor="#a3e635"
             max={maxNetwork}
           />
           <footer>rx solid · tx dashed</footer>
@@ -577,95 +646,144 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
         )}
 
         {pm2?.available && (
-          <div className="pm2-table">
-            <div className="pm2-table__head">
-              <span>ID</span>
-              <span>APP</span>
-              <span>STATUS</span>
-              <span>CPU%</span>
-              <span>MEM</span>
-              <span>RESTARTS</span>
-              <span>UPTIME</span>
-              <span>ACTIONS</span>
-            </div>
+          <div className="pm2-cards">
             {pm2.processes.map((process) => (
-              <div className="pm2-table__row" key={process.id}>
-                <span className="mono">{process.id}</span>
-                <span
-                  className="mono pm2-name"
-                  title={`${process.script || process.name}\n${process.cwd}`}
-                >
-                  {process.name}
+              <article className="pm2-card" key={process.id}>
+                <header>
+                  <span className="pm2-card__id">#{process.id}</span>
+                  <strong
+                    className="pm2-card__name"
+                    title={`${process.script || process.name}\n${process.cwd}`}
+                  >
+                    {process.name}
+                  </strong>
                   {process.namespace !== 'default' && process.namespace ? (
-                    <small>{process.namespace}</small>
+                    <span className="pm2-card__ns">{process.namespace}</span>
                   ) : null}
-                </span>
-                <span className={`pm2-status is-${process.status}`}>{process.status}</span>
-                <span className="mono">{process.cpu.toFixed(1)}</span>
-                <span className="mono">{formatKb(Math.round(process.memory / 1024))}</span>
-                <span className="mono">{process.restarts}</span>
-                <span className="mono">
-                  {process.uptimeMs && process.status === 'online'
-                    ? formatUptime(Math.max(0, (Date.now() - process.uptimeMs) / 1000))
-                    : '—'}
-                </span>
-                <div className="process-actions">
-                  {process.status === 'online' ? (
-                    <button
-                      className="icon-button"
-                      title="Stop this app"
-                      onClick={() => {
-                        setPm2Result(null)
-                        setPm2Target({ process, action: 'stop' })
-                      }}
-                    >
-                      <StopIcon size={13} />
-                    </button>
-                  ) : (
-                    <button
-                      className="icon-button"
-                      title="Start this app"
-                      onClick={() => {
-                        setPm2Result(null)
-                        setPm2Target({ process, action: 'start' })
-                      }}
-                    >
-                      <PlayIcon size={13} />
-                    </button>
-                  )}
-                  <button
-                    className="icon-button"
-                    title="Restart this app"
-                    onClick={() => {
-                      setPm2Result(null)
-                      setPm2Target({ process, action: 'restart' })
-                    }}
-                  >
-                    <RestartIcon size={13} />
-                  </button>
-                  <button
-                    className="icon-button"
-                    title="Open out/error logs"
-                    onClick={() => void openLogs(process)}
-                  >
-                    <FileIcon size={13} />
-                  </button>
-                  <button
-                    className="icon-button is-danger"
-                    title="Remove this app from the pm2 list"
-                    onClick={() => {
-                      setPm2Result(null)
-                      setPm2Target({ process, action: 'delete' })
-                    }}
-                  >
-                    <TrashIcon size={13} />
-                  </button>
+                  <span className={`pm2-status is-${process.status}`}>{process.status}</span>
+                </header>
+                <div className="pm2-card__grid">
+                  <span>Uptime</span>
+                  <strong className="mono">
+                    {process.uptimeMs && process.status === 'online'
+                      ? formatUptime(Math.max(0, (Date.now() - process.uptimeMs) / 1000))
+                      : '—'}
+                  </strong>
+                  <span>Restarts</span>
+                  <strong className="mono">{process.restarts}</strong>
+                  <span>Memory</span>
+                  <strong className="mono">
+                    {formatKb(Math.round(process.memory / 1024))}
+                  </strong>
+                  <span>CPU</span>
+                  <strong className="mono">{process.cpu.toFixed(1)}%</strong>
                 </div>
-              </div>
+                <footer>
+                  <span className="pm2-card__path" title={process.cwd}>
+                    {process.script ? process.script.split('/').pop() : '—'}
+                  </span>
+                  <div className="pm2-card__actions">
+                    {process.status === 'online' ? (
+                      <button
+                        className="icon-button"
+                        title="Stop this app"
+                        onClick={() => {
+                          setPm2Result(null)
+                          setPm2Target({ process, action: 'stop' })
+                        }}
+                      >
+                        <StopIcon size={13} />
+                      </button>
+                    ) : (
+                      <button
+                        className="icon-button"
+                        title="Start this app"
+                        onClick={() => {
+                          setPm2Result(null)
+                          setPm2Target({ process, action: 'start' })
+                        }}
+                      >
+                        <PlayIcon size={13} />
+                      </button>
+                    )}
+                    <button
+                      className="icon-button"
+                      title="Restart this app"
+                      onClick={() => {
+                        setPm2Result(null)
+                        setPm2Target({ process, action: 'restart' })
+                      }}
+                    >
+                      <RestartIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Monitor this process"
+                      onClick={() => void openMonitor(process)}
+                      disabled={process.pid === null}
+                    >
+                      <ActivityIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Open out/error logs"
+                      onClick={() => void openLogs(process)}
+                    >
+                      <FileIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button is-danger"
+                      title="Remove this app from the pm2 list"
+                      onClick={() => {
+                        setPm2Result(null)
+                        setPm2Target({ process, action: 'delete' })
+                      }}
+                    >
+                      <TrashIcon size={13} />
+                    </button>
+                  </div>
+                </footer>
+              </article>
             ))}
             {pm2.processes.length === 0 && (
               <div className="process-table__empty">pm2 has no processes</div>
             )}
+          </div>
+        )}
+
+        {pm2?.available && (
+          <div className="pm2-inject">
+            <div className="pm2-inject__label">
+              <TerminalIcon size={12} /> TERMINAL INJECTION
+            </div>
+            <form
+              className="pm2-inject__form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const command = injectCommand.trim()
+                if (!command || !profile) return
+                openTerminalWithCommand(profile, command)
+                setInjectCommand('')
+                pushToast('success', `Running in a new terminal: ${command}`)
+              }}
+            >
+              <span className="pm2-inject__prompt">$</span>
+              <input
+                value={injectCommand}
+                onChange={(event) => setInjectCommand(event.target.value)}
+                placeholder="pm2 restart all"
+                spellCheck={false}
+                aria-label="Command to run in a new terminal"
+              />
+              <button
+                type="submit"
+                className="pm2-inject__send"
+                disabled={!injectCommand.trim() || !profile}
+                title="Open a terminal and run this command"
+              >
+                <PlayIcon size={13} />
+              </button>
+            </form>
           </div>
         )}
 
@@ -1002,6 +1120,95 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
               </span>
               <button className="ghost-button" onClick={() => setLogsTarget(null)}>
                 Close
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {monitorTarget && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !detailsLoading) {
+              setMonitorTarget(null)
+              setDetails(null)
+            }
+          }}
+        >
+          <div className="modal modal--compact" role="dialog" aria-modal="true">
+            <header className="modal__header">
+              <div>
+                <h2>
+                  Monitor · {monitorTarget.name}
+                  <span className="panel__sub">id {monitorTarget.id}</span>
+                </h2>
+                <p>Datos de /proc en el servidor remoto.</p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setMonitorTarget(null)}
+                disabled={detailsLoading}
+                title="Cerrar"
+              >
+                <XIcon size={16} />
+              </button>
+            </header>
+            <div className="modal__body">
+              {detailsLoading && <div className="process-table__empty">leyendo proceso…</div>}
+              {detailsError && (
+                <div className="inline-alert inline-alert--error">
+                  <AlertIcon size={15} />
+                  <span>{detailsError}</span>
+                </div>
+              )}
+              {details && (
+                <div className="monitor-details">
+                  <div><span>PID</span><strong className="mono">{details.pid}</strong></div>
+                  <div><span>Usuario</span><strong className="mono">{details.user}</strong></div>
+                  <div><span>Estado</span><strong className="mono">{details.state}</strong></div>
+                  <div><span>CPU</span><strong className="mono">{details.cpu.toFixed(1)}%</strong></div>
+                  <div><span>Memoria</span><strong className="mono">{details.mem.toFixed(1)}%</strong></div>
+                  <div><span>RSS</span><strong className="mono">{formatKb(details.rssKb)}</strong></div>
+                  <div><span>Hilos</span><strong className="mono">{details.threads}</strong></div>
+                  <div><span>FDs</span><strong className="mono">{details.openFiles}</strong></div>
+                  <div className="monitor-details__wide">
+                    <span>Inicio</span><strong className="mono">{details.started}</strong>
+                  </div>
+                  <div className="monitor-details__wide">
+                    <span>Executable</span><strong className="mono">{details.exe || '—'}</strong>
+                  </div>
+                  <div className="monitor-details__wide">
+                    <span>Working dir</span><strong className="mono">{details.cwd || '—'}</strong>
+                  </div>
+                  <div className="monitor-details__wide">
+                    <span>Cmdline</span><strong className="mono">{details.command}</strong>
+                  </div>
+                </div>
+              )}
+            </div>
+            <footer className="modal__footer">
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  if (profile && monitorTarget.pid) {
+                    setMonitorTarget(null)
+                    openProcessTerminal(profile, monitorTarget.pid)
+                  }
+                }}
+                disabled={!monitorTarget.pid}
+              >
+                <TerminalIcon size={13} /> Abrir terminal
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() => void refreshMonitor()}
+                disabled={detailsLoading || !monitorTarget.pid}
+              >
+                <RefreshIcon size={13} className={detailsLoading ? 'spin' : ''} /> Actualizar
+              </button>
+              <button className="primary-button" onClick={() => setMonitorTarget(null)}>
+                Cerrar
               </button>
             </footer>
           </div>

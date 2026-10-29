@@ -5,9 +5,11 @@ import { securityService } from '@/services/security.service'
 import { cronService } from '@/services/cron.service'
 import { sshService } from '@/services/ssh.service'
 import { incidentService } from '@/services/incident.service'
+import { forensicsService } from '@/services/forensics.service'
 import {
   AlertIcon,
   CheckIcon,
+  ChevronRightIcon,
   ClockIcon,
   KeyIcon,
   PlusIcon,
@@ -20,10 +22,15 @@ import {
   XIcon,
 } from '@/components/Icons'
 import type {
+  ArtifactEntry,
   CronBackupSummary,
   CronEntry,
   CronReport,
+  AccountOrigin,
   IncidentScan,
+  SearchHit,
+  SecretHit,
+  SessionEntry,
   SudoAccount,
   SudoersReport,
   SuspectFile,
@@ -39,7 +46,25 @@ interface SecurityPanelProps {
   profileId: string
 }
 
-type SecurityView = 'audit' | 'cron' | 'incident' | 'sudoers' | 'ssh'
+type SecurityView = 'audit' | 'cron' | 'incident' | 'forensics' | 'sudoers' | 'ssh'
+
+const SEC_TITLES: Record<SecurityView, string> = {
+  audit: 'Security & hardening audit',
+  cron: 'Scheduled jobs & persistence',
+  incident: 'Incident response console',
+  forensics: 'Forensics & access trail',
+  sudoers: 'Sudoers & privileged access audit',
+  ssh: 'SSH access & key management',
+}
+
+const SEC_SUBTITLES: Record<SecurityView, string> = {
+  audit: 'Automated compliance parsing, hardening findings, exposed surfaces and remediation ledger.',
+  cron: 'Crontabs, drop-ins, timers, at jobs and recent execution traces for this node.',
+  incident: 'Temporary-directory processes, suspicious environments, established sockets and containment controls.',
+  forensics: 'Login history, root artifacts, recursive searches and credential exposure.',
+  sudoers: 'Automated compliance parsing, escalation surfaces, scheduled root timers, and authorization ledger.',
+  ssh: 'Authorized keys, effective sshd policy and key-only access controls.',
+}
 
 export function SecurityPanel({ profileId }: SecurityPanelProps) {
   const profiles = useAppStore((state) => state.profiles)
@@ -48,56 +73,46 @@ export function SecurityPanel({ profileId }: SecurityPanelProps) {
 
   return (
     <div className="panel security-panel">
-      <div className="panel__header">
-        <div>
-          <div className="panel__eyebrow">
-            <ShieldIcon size={14} /> security workspace
+      <div className="sec-header">
+        <div className="sec-header__main">
+          <div className="sec-breadcrumb">
+            <ShieldIcon size={12} />
+            <span>HARDENING TELEMETRY</span>
+            <span className="sec-breadcrumb__node">
+              NODE: {(profile?.name ?? profileId).toUpperCase()} ({profile?.host ?? '—'})
+            </span>
           </div>
-          <h2>
-            Security
-            <span className="panel__sub">{profile?.name ?? profileId}</span>
-          </h2>
-          <p className="panel__description">
-            Hardening audit, scheduled jobs and SSH key access for this host.
-          </p>
+          <h1 className="sec-title">{SEC_TITLES[view]}</h1>
+          <p className="sec-sub">{SEC_SUBTITLES[view]}</p>
         </div>
-        <div className="security-tabs">
-          <button
-            className={view === 'audit' ? 'is-active' : ''}
-            onClick={() => setView('audit')}
-          >
-            <ShieldIcon size={13} /> Audit
-          </button>
-          <button
-            className={view === 'cron' ? 'is-active' : ''}
-            onClick={() => setView('cron')}
-          >
-            <ClockIcon size={13} /> Cron
-          </button>
-          <button
-            className={view === 'incident' ? 'is-active' : ''}
-            onClick={() => setView('incident')}
-          >
-            <AlertIcon size={13} /> Incident
-          </button>
-          <button
-            className={view === 'sudoers' ? 'is-active' : ''}
-            onClick={() => setView('sudoers')}
-          >
-            <ShieldIcon size={13} /> Sudoers
-          </button>
-          <button
-            className={view === 'ssh' ? 'is-active' : ''}
-            onClick={() => setView('ssh')}
-          >
-            <KeyIcon size={13} /> SSH access
-          </button>
+        <div className="sec-header__actions">
+          <div className="security-tabs">
+            <button className={view === 'audit' ? 'is-active' : ''} onClick={() => setView('audit')}>
+              <ShieldIcon size={12} /> Audit
+            </button>
+            <button className={view === 'cron' ? 'is-active' : ''} onClick={() => setView('cron')}>
+              <ClockIcon size={12} /> Cron
+            </button>
+            <button className={view === 'incident' ? 'is-active' : ''} onClick={() => setView('incident')}>
+              <AlertIcon size={12} /> Incidents
+            </button>
+            <button className={view === 'forensics' ? 'is-active' : ''} onClick={() => setView('forensics')}>
+              <SearchIcon size={12} /> Forensics
+            </button>
+            <button className={view === 'sudoers' ? 'is-active' : ''} onClick={() => setView('sudoers')}>
+              <ShieldIcon size={12} /> Sudoers
+            </button>
+            <button className={view === 'ssh' ? 'is-active' : ''} onClick={() => setView('ssh')}>
+              <KeyIcon size={12} /> SSH keys
+            </button>
+          </div>
         </div>
       </div>
 
       {view === 'audit' && <AuditView profileId={profileId} />}
       {view === 'cron' && <CronView profileId={profileId} />}
       {view === 'incident' && <IncidentView profileId={profileId} />}
+      {view === 'forensics' && <ForensicsView profileId={profileId} />}
       {view === 'sudoers' && <SudoersView profileId={profileId} />}
       {view === 'ssh' && <SshAccessView profileId={profileId} />}
     </div>
@@ -304,10 +319,10 @@ function AuditView({ profileId }: { profileId: string }) {
                 <span>Security score</span>
                 <strong className={scoreClass(report.score)}>
                   {report.score >= 80
-                    ? 'Good'
+                    ? 'GOOD'
                     : report.score >= 60
-                      ? 'Needs attention'
-                      : 'Critical'}
+                      ? 'NEEDS ATTENTION'
+                      : 'CRITICAL'}
                 </strong>
                 <small>{report.hostname}</small>
               </div>
@@ -344,7 +359,9 @@ function AuditView({ profileId }: { profileId: string }) {
           </div>
 
           <div className="finding-toolbar">
-            <h3>Findings</h3>
+            <h3>
+              FINDINGS <span className="findings-count">{findings.length} AUDIT ITEMS</span>
+            </h3>
             <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
               <option value="all">All severities</option>
               <option value="critical">Critical</option>
@@ -481,6 +498,9 @@ function FindingRow({
             manual
           </span>
         )}
+        <span className="finding-chevron">
+          <ChevronRightIcon size={13} />
+        </span>
       </summary>
       <div className="finding-body">
         <p>{finding.detail}</p>
@@ -821,6 +841,304 @@ function CronView({ profileId }: { profileId: string }) {
 
 
 
+
+type ForensicsSection = 'sessions' | 'artifacts' | 'search' | 'secrets'
+
+function ForensicsView({ profileId }: { profileId: string }) {
+  const pushToast = useAppStore((state) => state.pushToast)
+  const [section, setSection] = useState<ForensicsSection>('sessions')
+  const [sessions, setSessions] = useState<SessionEntry[]>([])
+  const [artifacts, setArtifacts] = useState<ArtifactEntry[]>([])
+  const [hits, setHits] = useState<SearchHit[]>([])
+  const [secrets, setSecrets] = useState<SecretHit[]>([])
+  const [path, setPath] = useState('/root')
+  const [query, setQuery] = useState('')
+  const [regex, setRegex] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = useCallback(
+    async (target: ForensicsSection) => {
+      setLoading(true)
+      setError(null)
+      try {
+        if (target === 'sessions') setSessions(await forensicsService.sessions(profileId))
+        if (target === 'artifacts') setArtifacts(await forensicsService.artifacts(profileId, path))
+        if (target === 'search') {
+          if (!query.trim()) {
+            setError('Escribe un texto para buscar.')
+            return
+          }
+          setHits(await forensicsService.search(profileId, path, query.trim(), regex))
+        }
+        if (target === 'secrets') setSecrets(await forensicsService.secrets(profileId, path))
+      } catch (err) {
+        const message = String(err)
+        setError(message)
+        pushToast('error', message)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [profileId, path, query, regex, pushToast],
+  )
+
+  useEffect(() => {
+    void run('sessions')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId])
+
+  const uniqueIps = useMemo(
+    () => [...new Set(sessions.map((session) => session.from).filter(Boolean))],
+    [sessions],
+  )
+
+  const filteredSessions = useMemo(() => {
+    const term = filter.trim().toLowerCase()
+    if (!term) return sessions
+    return sessions.filter((session) =>
+      [session.user, session.tty, session.from, session.start]
+        .join(' ')
+        .toLowerCase()
+        .includes(term),
+    )
+  }, [sessions, filter])
+
+  const aiTools = artifacts.filter((item) => item.tag === 'ai-tool')
+
+  return (
+    <div className="security-view">
+      <div className="sec-toolbar">
+        <div className="security-tabs">
+          {(
+            [
+              ['sessions', 'Sesiones SSH'],
+              ['artifacts', 'Artefactos'],
+              ['search', 'Búsqueda'],
+              ['secrets', 'Secretos'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={section === value ? 'is-active' : ''}
+              onClick={() => setSection(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="sec-toolbar__meta">
+          {section === 'sessions' && `${sessions.length} sesiones · ${uniqueIps.length} IPs`}
+          {section === 'artifacts' && `${artifacts.length} entradas`}
+          {section === 'search' && `${hits.length} coincidencias`}
+          {section === 'secrets' && `${secrets.length} archivos`}
+        </span>
+      </div>
+
+      {error && (
+        <div className="inline-alert inline-alert--error">
+          <AlertIcon size={15} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {section !== 'sessions' && (
+        <div className="forensics-toolbar">
+          <label className="forensics-field">
+            <span>ruta</span>
+            <input value={path} onChange={(event) => setPath(event.target.value)} spellCheck={false} />
+          </label>
+          {section === 'search' && (
+            <>
+              <label className="forensics-field forensics-field--grow">
+                <span>texto</span>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void run('search')
+                  }}
+                  placeholder="useradd, curl, base64…"
+                  spellCheck={false}
+                />
+              </label>
+              <label className="forensics-check">
+                <input
+                  type="checkbox"
+                  checked={regex}
+                  onChange={(event) => setRegex(event.target.checked)}
+                />
+                regex
+              </label>
+            </>
+          )}
+          <button className="primary-button" onClick={() => void run(section)} disabled={loading}>
+            {loading ? 'Ejecutando…' : section === 'search' ? 'Buscar' : 'Escanear'}
+          </button>
+        </div>
+      )}
+
+      {section === 'sessions' && (
+        <>
+          <div className="forensics-toolbar">
+            <div className="db-search forensics-filter">
+              <SearchIcon size={13} />
+              <input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder="Filtrar por usuario, IP o tty…"
+                spellCheck={false}
+              />
+            </div>
+            <button className="primary-button" onClick={() => void run('sessions')} disabled={loading}>
+              {loading ? 'Leyendo…' : 'Actualizar'}
+            </button>
+          </div>
+          <div className="network-block">
+            <header>
+              <h3>Historial de accesos (last -aF)</h3>
+              <span>{filteredSessions.length} filas</span>
+            </header>
+            <div className="forensics-table forensics-table--sessions">
+              <div className="forensics-row forensics-row--head">
+                <span>USUARIO</span>
+                <span>TTY</span>
+                <span>ORIGEN</span>
+                <span>INICIO</span>
+                <span>FIN</span>
+                <span>DURACIÓN</span>
+                <span>ESTADO</span>
+              </div>
+              {filteredSessions.map((session, index) => (
+                <div className="forensics-row" key={`${session.user}-${session.tty}-${session.start}-${index}`}>
+                  <span className="mono">{session.user}</span>
+                  <span className="mono">{session.tty}</span>
+                  <span className="mono forensics-ip">{session.from || '—'}</span>
+                  <span className="mono forensics-dim">{session.start}</span>
+                  <span className="mono forensics-dim">{session.end || '—'}</span>
+                  <span className="mono">{session.duration || '—'}</span>
+                  <span>
+                    {session.current ? (
+                      <span className="forensics-badge is-live">activa</span>
+                    ) : (
+                      <span className="forensics-badge">cerrada</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+              {filteredSessions.length === 0 && (
+                <div className="process-table__empty">Sin sesiones.</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {section === 'artifacts' && (
+        <>
+          {aiTools.length > 0 && (
+            <div className="inline-alert inline-alert--warn">
+              <AlertIcon size={15} />
+              <span>
+                {aiTools.length} directorio(s) de IDE/CLI de IA en esta ruta. Revisa su fecha de
+                creación: si no los instalaste tú, son acceso interactivo de alguien más.
+              </span>
+            </div>
+          )}
+          <div className="network-block">
+            <header>
+              <h3>Artefactos en {path}</h3>
+              <span>{artifacts.length}</span>
+            </header>
+            <div className="forensics-table forensics-table--artifacts">
+              <div className="forensics-row forensics-row--head">
+                <span>NOMBRE</span>
+                <span>TIPO</span>
+                <span>TAG</span>
+                <span>CREADO</span>
+                <span>MODIFICADO</span>
+                <span>TAMAÑO</span>
+              </div>
+              {artifacts.map((item) => (
+                <div className="forensics-row" key={item.path}>
+                  <span className="mono forensics-name" title={item.path}>{item.name}</span>
+                  <span className="mono forensics-dim">{item.kind}</span>
+                  <span>
+                    <span className={`forensics-badge tag-${item.tag}`}>{item.tag}</span>
+                  </span>
+                  <span className="mono forensics-dim">{item.birth}</span>
+                  <span className="mono forensics-dim">{item.change}</span>
+                  <span className="mono">{item.sizeHuman}</span>
+                </div>
+              ))}
+              {artifacts.length === 0 && (
+                <div className="process-table__empty">Sin datos. Pulsa Escanear.</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {section === 'search' && (
+        <div className="network-block">
+          <header>
+            <h3>Coincidencias en {path}</h3>
+            <span>{hits.length}</span>
+          </header>
+          <div className="forensics-hits">
+            {hits.map((hit, index) => (
+              <div className="forensics-hit" key={`${hit.path}-${hit.line}-${index}`}>
+                <span className="mono forensics-hit__path" title={hit.path}>
+                  {hit.path}:{hit.line}
+                </span>
+                <span className="mono forensics-hit__text">{hit.text}</span>
+              </div>
+            ))}
+            {hits.length === 0 && (
+              <div className="process-table__empty">Sin coincidencias.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {section === 'secrets' && (
+        <>
+          <div className="inline-alert inline-alert--warn">
+            <AlertIcon size={15} />
+            <span>
+              Solo se muestran ruta, línea y tipo. Los valores nunca se envían a la interfaz.
+            </span>
+          </div>
+          <div className="network-block">
+            <header>
+              <h3>Credenciales detectadas en {path}</h3>
+              <span>{secrets.length}</span>
+            </header>
+            <div className="forensics-table forensics-table--secrets">
+              <div className="forensics-row forensics-row--head">
+                <span>ARCHIVO</span>
+                <span>LÍNEA</span>
+                <span>TIPO</span>
+              </div>
+              {secrets.map((secret, index) => (
+                <div className="forensics-row" key={`${secret.path}-${secret.line}-${index}`}>
+                  <span className="mono forensics-name" title={secret.path}>{secret.path}</span>
+                  <span className="mono">{secret.line}</span>
+                  <span className="forensics-badge is-secret">{secret.kind}</span>
+                </div>
+              ))}
+              {secrets.length === 0 && (
+                <div className="process-table__empty">Sin credenciales detectadas.</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function SudoersView({ profileId }: { profileId: string }) {
   const pushToast = useAppStore((state) => state.pushToast)
   const [report, setReport] = useState<SudoersReport | null>(null)
@@ -833,6 +1151,10 @@ function SudoersView({ profileId }: { profileId: string }) {
   >(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [originUser, setOriginUser] = useState<string | null>(null)
+  const [origin, setOrigin] = useState<AccountOrigin | null>(null)
+  const [originLoading, setOriginLoading] = useState(false)
+  const [originError, setOriginError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -875,6 +1197,20 @@ function SudoersView({ profileId }: { profileId: string }) {
     }
   }
 
+  const openOrigin = async (user: string) => {
+    setOriginUser(user)
+    setOrigin(null)
+    setOriginError(null)
+    setOriginLoading(true)
+    try {
+      setOrigin(await securityService.accountOrigin(profileId, user))
+    } catch (err) {
+      setOriginError(String(err))
+    } finally {
+      setOriginLoading(false)
+    }
+  }
+
   const nopasswd = report?.rules.filter((rule) => rule.nopasswd).length ?? 0
   const privilegedUsers = useMemo(() => {
     if (!report) return []
@@ -886,21 +1222,20 @@ function SudoersView({ profileId }: { profileId: string }) {
 
   return (
     <div className="security-view">
-      <div className="security-toolbar">
+      <div className="sec-toolbar">
         <button className="primary-button" onClick={() => void load()} disabled={loading}>
-          <ShieldIcon size={14} className={loading ? 'spin' : ''} />
+          <ShieldIcon size={13} className={loading ? 'spin' : ''} />
           {loading ? 'Leyendo sudoers…' : 'Leer sudoers'}
         </button>
         {report && (
           <>
-            <span className={`network-badge ${report.configOk ? 'is-local' : 'is-public'}`}>
+            <span className={`sec-status ${report.configOk ? 'is-ok' : 'is-bad'}`}>
               {report.configOk ? <CheckIcon size={11} /> : <AlertIcon size={11} />}
-              {report.configOk ? 'visudo -c OK' : 'error de sintaxis'}
+              visudo -c: {report.configOk ? 'syntax valid' : 'errors'}
             </span>
-            <span className="security-meta">
-              {report.rules.length} reglas · {nopasswd} con NOPASSWD ·{' '}
-              {report.groups.reduce((total, group) => total + group.members.length, 0)} miembros
-              en grupos sudo
+            <span className="sec-toolbar__meta">
+              {report.rules.length} REGLAS ACTIVAS · {nopasswd} CON NOPASSWD ·{' '}
+              {report.accounts.length} CUENTAS REGISTRADAS
             </span>
           </>
         )}
@@ -916,18 +1251,37 @@ function SudoersView({ profileId }: { profileId: string }) {
       {report && (
         <>
           {nopasswd > 0 && (
-            <div className="inline-alert inline-alert--error">
-              <AlertIcon size={15} />
-              <span>
-                {nopasswd} regla(s) permiten sudo sin contraseña. Revisa que cada una esté
-                limitada al comando exacto necesario.
+            <div className="risk-banner">
+              <span className="risk-banner__icon">
+                <AlertIcon size={15} />
               </span>
+              <div className="risk-banner__body">
+                <strong>
+                  Exposición crítica: {nopasswd} regla(s) permiten sudo sin contraseña
+                </strong>
+                <p>
+                  Revisa que cada regla esté limitada al comando exacto necesario. Una regla
+                  NOPASSWD: ALL equivale a root sin barrera.
+                </p>
+              </div>
+              <button
+                className="risk-banner__cta"
+                onClick={() =>
+                  document
+                    .querySelector('.sudoers-rules')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }
+              >
+                Examinar riesgo
+              </button>
             </div>
           )}
 
+          <div className="sudoers-grid">
+          <div className="sudoers-col">
           <section className="network-block">
             <header>
-              <h3>Grupos con privilegios</h3>
+              <h3><ShieldIcon size={12} /> Grupos con privilegios</h3>
               <span>{privilegedUsers.length} usuarios</span>
             </header>
             <div className="sudoers-table">
@@ -972,7 +1326,17 @@ function SudoersView({ profileId }: { profileId: string }) {
                 <div className="sudoers-row" key={account.user}>
                   <span className="mono sudoers-user" title={account.home || account.user}>
                     {account.user}
-                    {!account.exists && <span className="sudoers-orphan">no existe</span>}
+                    {!account.exists ? (
+                      <span className="sudoers-orphan">NO EXISTE</span>
+                    ) : (
+                      <span
+                        className={`sudoers-state ${
+                          account.passwordStatus === 'L' ? 'is-locked' : 'is-active'
+                        }`}
+                      >
+                        {account.passwordStatus === 'L' ? 'BLOQUEADA' : 'ACTIVO'}
+                      </span>
+                    )}
                   </span>
                   <span className="mono">{account.uid || '—'}</span>
                   <span className="mono sudoers-ellipsis" title={account.shell}>
@@ -992,6 +1356,14 @@ function SudoersView({ profileId }: { profileId: string }) {
                   </span>
                   <span className="mono">{account.authorizedKeys}</span>
                   <span className="sudoers-account-actions">
+                    <button
+                      className="top-action"
+                      title="Ver quién creó la cuenta, desde qué IP y cuándo"
+                      onClick={() => void openOrigin(account.user)}
+                      disabled={busy}
+                    >
+                      Origen
+                    </button>
                     {account.exists && account.user !== 'root' && (
                       <button
                         className={
@@ -1019,10 +1391,12 @@ function SudoersView({ profileId }: { profileId: string }) {
               )}
             </div>
           </section>
+          </div>
 
+          <div className="sudoers-col sudoers-rules">
           <section className="network-block">
             <header>
-              <h3>Reglas de sudoers</h3>
+              <h3><ShieldIcon size={12} /> Reglas de sudoers (/etc/sudoers)</h3>
               <span>{report.rules.length}</span>
             </header>
             <div className="sudoers-table sudoers-table--rules">
@@ -1072,18 +1446,162 @@ function SudoersView({ profileId }: { profileId: string }) {
                 <div className="process-table__empty">Sin reglas explícitas.</div>
               )}
             </div>
-          </section>
-
-          <div className="sudoers-extras">
-            <div>
-              <span>Cuentas UID 0</span>
-              <strong className="mono">{report.rootAccounts.join(', ') || 'root'}</strong>
+            <div className="sudoers-ledger">
+              <span>
+                Cuentas UID 0: <strong>{report.rootAccounts.join(', ') || 'root'}</strong>
+              </span>
             </div>
-            {!report.configOk && (
-              <pre className="ssh-config-output">{report.configOutput}</pre>
-            )}
+          </section>
+          {!report.configOk && (
+            <pre className="ssh-config-output">{report.configOutput}</pre>
+          )}
+          </div>
           </div>
         </>
+      )}
+
+      {originUser && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !originLoading) {
+              setOriginUser(null)
+              setOrigin(null)
+            }
+          }}
+        >
+          <div className="modal modal--logs" role="dialog" aria-modal="true">
+            <header className="modal__header">
+              <div>
+                <h2>
+                  Origen de la cuenta · {originUser}
+                  <span className="panel__sub">{profileId}</span>
+                </h2>
+                <p>auditd, /var/log/secure, sudo, last y sistema de archivos.</p>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => {
+                  setOriginUser(null)
+                  setOrigin(null)
+                }}
+                disabled={originLoading}
+                title="Cerrar"
+              >
+                <XIcon size={16} />
+              </button>
+            </header>
+            <div className="modal__body pm2-logs-body">
+              {originLoading && <div className="process-table__empty">buscando rastro…</div>}
+              {originError && (
+                <div className="inline-alert inline-alert--error">
+                  <AlertIcon size={15} />
+                  <span>{originError}</span>
+                </div>
+              )}
+              {origin && (
+                <>
+                  <div className="origin-grid">
+                    <div>
+                      <span>Creada</span>
+                      <strong className="mono">{origin.createdAt || 'desconocido'}</strong>
+                    </div>
+                    <div>
+                      <span>Creada por</span>
+                      <strong className="mono">{origin.createdBy || 'desconocido'}</strong>
+                    </div>
+                    <div>
+                      <span>IP de origen</span>
+                      <strong className="mono">{origin.sourceIp || 'desconocida'}</strong>
+                    </div>
+                    <div>
+                      <span>Home</span>
+                      <strong className="mono">
+                        {origin.homeBirth || origin.homeChange || '—'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Grupo</span>
+                      <strong className="mono">{origin.group || '—'}</strong>
+                    </div>
+                    <div>
+                      <span>auditd</span>
+                      <strong className="mono">
+                        {origin.auditAvailable ? 'con registros' : 'sin registros'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {origin.notes.length > 0 && (
+                    <div className="inline-alert inline-alert--warn">
+                      <AlertIcon size={15} />
+                      <span>{origin.notes.join(' ')}</span>
+                    </div>
+                  )}
+
+                  <div className="origin-section">
+                    <h4>Eventos de creación</h4>
+                    {origin.evidence.length === 0 ? (
+                      <p className="process-table__empty">
+                        Sin evidencia de creación en los logs disponibles.
+                      </p>
+                    ) : (
+                      <div className="origin-events">
+                        {origin.evidence.map((event, index) => (
+                          <div className="origin-event" key={`${event.kind}-${index}`}>
+                            <span className={`origin-kind kind-${event.kind}`}>{event.kind}</span>
+                            <span className="mono origin-time">{event.timestamp || '—'}</span>
+                            <span className="mono origin-actor">
+                              {event.actor || '—'} {event.sourceIp ? `· ${event.sourceIp}` : ''}
+                            </span>
+                            <span className="mono origin-detail" title={event.detail}>
+                              {event.detail}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="origin-section">
+                    <h4>Inicios de sesión ({origin.logins.length})</h4>
+                    <pre className="pm2-log-pre origin-pre">
+                      {origin.logins.join('\n') || 'sin registros en last'}
+                    </pre>
+                  </div>
+
+                  {origin.sshLog.length > 0 && (
+                    <details className="origin-section">
+                      <summary>Accesos SSH de root ({origin.sshLog.length})</summary>
+                      <pre className="pm2-log-pre origin-pre">{origin.sshLog.join('\n')}</pre>
+                    </details>
+                  )}
+
+                  {origin.history.length > 0 && (
+                    <details className="origin-section">
+                      <summary>Historial de root ({origin.history.length})</summary>
+                      <pre className="pm2-log-pre origin-pre">{origin.history.join('\n')}</pre>
+                    </details>
+                  )}
+                </>
+              )}
+            </div>
+            <footer className="modal__footer">
+              <span className="field-hint">
+                auditd es la fuente fiable; sin audit los logs pueden haberse borrado.
+              </span>
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  setOriginUser(null)
+                  setOrigin(null)
+                }}
+              >
+                Cerrar
+              </button>
+            </footer>
+          </div>
+        </div>
       )}
 
       {target && (

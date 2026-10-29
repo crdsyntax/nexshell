@@ -88,9 +88,13 @@ impl MetricsService {
         interval_ms: u64,
     ) -> AppResult<()> {
         {
-            let watchers = self.watchers.read().await;
-            if watchers.contains_key(profile_id) {
-                return Ok(());
+            // A finished task (panic or aborted externally) must not block a restart.
+            let mut watchers = self.watchers.write().await;
+            if let Some(existing) = watchers.get(profile_id) {
+                if !existing.handle.is_finished() {
+                    return Ok(());
+                }
+                watchers.remove(profile_id);
             }
         }
 

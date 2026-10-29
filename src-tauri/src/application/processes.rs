@@ -1,6 +1,8 @@
 use crate::application::pool::PoolManager;
 use crate::error::{AppError, AppResult};
-use crate::models::{ConnectionProfile, NodeProcess, ProcessKillResult, ProcessLocation};
+use crate::models::{
+    ConnectionProfile, NodeProcess, ProcessDetails, ProcessKillResult, ProcessLocation,
+};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +102,39 @@ exit 0"#
             )));
         }
         Ok(location)
+    }
+
+    /// Snapshot of a single process: state, resources, cwd and open files.
+    pub async fn details(
+        pools: &PoolManager,
+        profile_id: &str,
+        pid: u32,
+    ) -> AppResult<ProcessDetails> {
+        validate_pid(pid)?;
+        let script = format!(
+            r####"export LC_ALL=C 2>/dev/null
+echo __PS__
+ps -p {pid} -o pid=,user=,stat=,pcpu=,pmem=,rss=,nlwp=,lstart=,args= 2>/dev/null
+echo __EXE__
+readlink /proc/{pid}/exe 2>/dev/null
+echo __CWD__
+readlink /proc/{pid}/cwd 2>/dev/null
+echo __FD__
+ls /proc/{pid}/fd 2>/dev/null | wc -l
+"####,
+            pid = pid
+        );
+        let output = pools
+            .execute_process(profile_id, &script, Duration::from_secs(15))
+            .await?;
+        if !output.success() {
+            return Err(AppError::Remote(format!(
+                "cannot inspect pid {pid}: {}",
+                output.stderr.trim()
+            )));
+        }
+        let sections = split_sections(&output.stdout);
+        parse_details(pid, &sections)
     }
 
     /// Lists Node.js/PM2 processes with CPU, memory and elapsed time.
@@ -287,5 +322,83 @@ mod node_tests {
         assert_eq!(processes[0].rss_kb, 308000);
         assert_eq!(processes[0].elapsed_secs, 3600);
         assert!(processes[0].command.contains("server.js"));
+    }
+}
+
+fn split_sections(output: &str) -> std::collections::HashMap<String, Vec<String>> {
+    let mut sections: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut current = String::from("__HEAD__");
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("__") && trimmed.ends_with("__") && trimmed.len() > 4 {
+            current = trimmed.trim_matches('_').to_string();
+            sections.entry(current.clone()).or_default();
+        } else {
+            sections
+                .entry(current.clone())
+                .or_default()
+                .push(line.to_string());
+        }
+    }
+    sections
+}
+
+fn parse_details(
+    pid: u32,
+    sections: &std::collections::HashMap<String, Vec<String>>,
+) -> AppResult<ProcessDetails> {
+    let ps = sections
+        .get("PS")
+        .and_then(|lines| lines.iter().find(|line| !line.trim().is_empty()))
+        .map(|line| line.trim().to_string())
+        .ok_or_else(|| AppError::Remote(format!("process {pid} not found")))?;
+
+    // pid user stat pcpu pmem rss nlwp lstart(5 tokens) args...
+    let fields: Vec<&str> = ps.split_whitespace().collect();
+    if fields.len() < 12 {
+        return Err(AppError::Remote(format!(
+            "unexpected ps output for pid {pid}"
+        )));
+    }
+    let command = fields[11..].join(" ");
+    Ok(ProcessDetails {
+        pid,
+        user: fields[1].to_string(),
+        state: fields[2].to_string(),
+        cpu: fields[3].parse().unwrap_or(0.0),
+        mem: fields[4].parse().unwrap_or(0.0),
+        rss_kb: fields[5].parse().unwrap_or(0),
+        threads: fields[6].parse().unwrap_or(0),
+        started: fields[7..11].join(" "),
+        exe: section_line(sections, "EXE"),
+        cwd: section_line(sections, "CWD"),
+        command,
+        open_files: section_line(sections, "FD").parse().unwrap_or(0),
+    })
+}
+
+fn section_line(sections: &std::collections::HashMap<String, Vec<String>>, key: &str) -> String {
+    sections
+        .get(key)
+        .and_then(|lines| lines.iter().find(|line| !line.trim().is_empty()))
+        .map(|line| line.trim().to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod details_tests {
+    use super::*;
+
+    #[test]
+    fn parses_process_details() {
+        let output = "__PS__\n2469394 root Sl 1.6 2.0 256000 11 Thu Oct 29 15:41:02 2026 node /var/www/app/server.js\n__EXE__\n/usr/bin/node\n__CWD__\n/var/www/app\n__FD__\n42\n";
+        let sections = split_sections(output);
+        let details = parse_details(2469394, &sections).unwrap();
+        assert_eq!(details.user, "root");
+        assert_eq!(details.threads, 11);
+        assert_eq!(details.cwd, "/var/www/app");
+        assert_eq!(details.open_files, 42);
+        assert!(details.command.contains("server.js"));
     }
 }

@@ -50,10 +50,18 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
   visor de procesos Node activos.
 - **Network**: pestaña dedicada con puertos en escucha, conexiones establecidas, proceso
   y PID, marca de exposición pública y resumen de sockets/DNS/ruta.
+- **Forensics**: historial de accesos SSH con IPs, artefactos de `/root` con fechas de
+  creación y etiquetas (IDE/CLI de IA, herramientas, credenciales), búsqueda recursiva y
+  detección de credenciales sin exponer valores.
 - **Sudoers**: en Security, grupos con privilegios, reglas con `NOPASSWD` resaltado,
   cuentas referenciadas (existencia, UID, shell, estado de contraseña, último login,
   claves SSH) y acciones para **eliminar una regla** (backup + `visudo -c` + rollback) o
-  **bloquear/desbloquear** la cuenta.
+  **bloquear/desbloquear** la cuenta y ver el **origen** de la cuenta: quién la creó
+  (`auid`), desde qué IP, cuándo, con evidencia de auditd/secure/sudo/last.
+- **Árbol de archivos en la terminal**: panel derecho tipo VS Code que sigue el `cd`
+  (OSC 7), distingue carpetas/archivos/ocultos/vacíos y permite crear, renombrar,
+  eliminar, copiar ruta y abrir terminal en la carpeta. Doble clic en un archivo de texto
+  abre un **editor remoto** (vim/nano/vi) en un modal con PTY.
 - **PM2**: en la pestaña Monitor se listan las apps con estado, CPU, memoria,
   reinicios y uptime; se pueden iniciar, detener, reiniciar o eliminar del listado y
   ver el tail de los logs `out`/`error`.
@@ -330,6 +338,7 @@ almacena la contraseña de sudo.
 | `sudoers_report` | Grupos, reglas y cuentas de sudoers |
 | `sudoers_remove_rule` | Elimina una regla con backup y visudo |
 | `system_user_lock` | Bloquea/desbloquea una cuenta |
+| `account_origin` | Forense de creación: actor, IP y fecha |
 | `monitor_start/stop/snapshot` | Colector de métricas y última muestra |
 | `service_detect/status/action` | Detección y control de servicios |
 | `service_config_list/read/write` | Configuración con validación y rollback |

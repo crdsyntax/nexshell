@@ -2,8 +2,11 @@ use crate::application::audit::AuditEvent;
 use crate::application::cron::CronManager;
 use crate::application::database::DatabaseManager;
 use crate::application::filesystem::FilesystemManager;
+use crate::application::forensics::ForensicsManager;
+use crate::application::fstree::FileTreeManager;
 use crate::application::incident::IncidentManager;
 use crate::application::network::NetworkManager;
+use crate::application::origin::AccountOriginManager;
 use crate::application::pm2::{Pm2Action, Pm2Manager};
 use crate::application::processes::{ProcessManager, ProcessSignal};
 use crate::application::remediation;
@@ -14,13 +17,14 @@ use crate::application::sudoers::SudoersManager;
 use crate::application::terminal::TerminalOptions;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    ConfigContent, ConfigEntry, ConnectionProfile, CronBackupSummary, CronDeleteResult, CronReport,
-    DbInfo, DbLoginTest, DbPasswordResult, DbUser, ExecOutput, ExecutionLog, FileDeleteResult,
-    FileProperties, IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogFilter,
-    NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats, ProcessKillResult, ProcessLocation,
-    ProfileView, SecurityAuditSummary, SecurityFixResult, SecurityReport, ServerInfo,
-    ServiceActionResult, ServiceStatus, SshActionResult, SshConfig, SshKey, SudoersReport,
-    TerminalInfo, TestResult, WebServiceInfo,
+    AccountOrigin, ArtifactEntry, ConfigContent, ConfigEntry, ConnectionProfile, CronBackupSummary,
+    CronDeleteResult, CronReport, DbInfo, DbLoginTest, DbPasswordResult, DbUser, DirListing,
+    ExecOutput, ExecutionLog, FileDeleteResult, FileProperties, IncidentActionResult, IncidentScan,
+    KeyProbe, LargeFile, LogFilter, NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats,
+    ProcessDetails, ProcessKillResult, ProcessLocation, ProfileView, SearchHit, SecretHit,
+    SecurityAuditSummary, SecurityFixResult, SecurityReport, ServerInfo, ServiceActionResult,
+    ServiceStatus, SessionEntry, SshActionResult, SshConfig, SshKey, SudoersReport, TerminalInfo,
+    TestResult, WebServiceInfo,
 };
 use crate::state::AppState;
 use std::time::{Duration, Instant};
@@ -1080,4 +1084,157 @@ pub async fn system_user_lock(
         .target(&user),
     );
     result
+}
+
+#[tauri::command]
+pub async fn account_origin(
+    profile_id: String,
+    user: String,
+    state: State<'_, AppState>,
+) -> AppResult<AccountOrigin> {
+    let profile = state.profiles.get(&profile_id)?;
+    AccountOriginManager::origin(&state.pools, &profile, &user).await
+}
+
+#[tauri::command]
+pub async fn process_details(
+    profile_id: String,
+    pid: u32,
+    state: State<'_, AppState>,
+) -> AppResult<ProcessDetails> {
+    crate::application::processes::ProcessManager::details(&state.pools, &profile_id, pid).await
+}
+
+// ---------------------------------------------------------------------------
+// File tree (terminal sidebar)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn fs_list(
+    profile_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<DirListing> {
+    let profile = state.profiles.get(&profile_id)?;
+    FileTreeManager::list(&state.pools, &profile, &path).await
+}
+
+#[tauri::command]
+pub async fn fs_editor(profile_id: String, state: State<'_, AppState>) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    FileTreeManager::editor(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn fs_create(
+    profile_id: String,
+    path: String,
+    directory: bool,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = FileTreeManager::create(&state.pools, &profile, &path, directory).await;
+    state.audit.log(
+        AuditEvent::new(
+            "filesystem",
+            if directory { "mkdir" } else { "touch" },
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&path),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn fs_rename(
+    profile_id: String,
+    from: String,
+    to: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = FileTreeManager::rename(&state.pools, &profile, &from, &to).await;
+    state.audit.log(
+        AuditEvent::new(
+            "filesystem",
+            "rename",
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(format!("{from} -> {to}")),
+    );
+    result
+}
+
+#[tauri::command]
+pub async fn fs_delete(
+    profile_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let profile = state.profiles.get(&profile_id)?;
+    let result = FileTreeManager::delete(&state.pools, &profile, &path).await;
+    state.audit.log(
+        AuditEvent::new(
+            "filesystem",
+            "delete",
+            if result.is_ok() { "success" } else { "error" },
+        )
+        .profile(Some(&profile_id), Some(&profile.name))
+        .target(&path),
+    );
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Forensics
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn forensics_sessions(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SessionEntry>> {
+    let profile = state.profiles.get(&profile_id)?;
+    ForensicsManager::sessions(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn forensics_artifacts(
+    profile_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<ArtifactEntry>> {
+    let profile = state.profiles.get(&profile_id)?;
+    ForensicsManager::artifacts(&state.pools, &profile, &path).await
+}
+
+#[tauri::command]
+pub async fn forensics_search(
+    profile_id: String,
+    path: String,
+    query: String,
+    regex: Option<bool>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SearchHit>> {
+    let profile = state.profiles.get(&profile_id)?;
+    ForensicsManager::search(
+        &state.pools,
+        &profile,
+        &path,
+        &query,
+        regex.unwrap_or(false),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn forensics_secrets(
+    profile_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<SecretHit>> {
+    let profile = state.profiles.get(&profile_id)?;
+    ForensicsManager::secrets(&state.pools, &profile, &path).await
 }

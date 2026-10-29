@@ -252,6 +252,34 @@ export interface SudoAccount {
   groups: string
 }
 
+export interface AccountEvidence {
+  kind: string
+  timestamp: string
+  actor: string
+  sourceIp: string
+  detail: string
+}
+
+export interface AccountOrigin {
+  user: string
+  account: string
+  group: string
+  passwdMtime: string
+  groupMtime: string
+  shadowMtime: string
+  homeBirth: string
+  homeChange: string
+  createdAt: string
+  createdBy: string
+  sourceIp: string
+  evidence: AccountEvidence[]
+  logins: string[]
+  history: string[]
+  sshLog: string[]
+  notes: string[]
+  auditAvailable: boolean
+}
+
 export interface SudoersReport {
   hostname: string
   generatedAt: number
@@ -261,6 +289,74 @@ export interface SudoersReport {
   rootAccounts: string[]
   configOk: boolean
   configOutput: string
+}
+
+export interface SessionEntry {
+  user: string
+  tty: string
+  from: string
+  start: string
+  end: string
+  duration: string
+  current: boolean
+}
+
+export interface ArtifactEntry {
+  name: string
+  path: string
+  kind: string
+  tag: string
+  birth: string
+  change: string
+  sizeBytes: number
+  sizeHuman: string
+}
+
+export interface SearchHit {
+  path: string
+  line: number
+  text: string
+}
+
+export interface SecretHit {
+  path: string
+  line: number
+  kind: string
+  preview: string
+}
+
+export interface FsEntry {
+  name: string
+  path: string
+  kind: 'dir' | 'file' | 'link'
+  sizeBytes: number
+  sizeHuman: string
+  mode: string
+  modified: string
+  empty: boolean
+  hidden: boolean
+  symlink: boolean
+}
+
+export interface DirListing {
+  path: string
+  parent: string
+  entries: FsEntry[]
+}
+
+export interface ProcessDetails {
+  pid: number
+  user: string
+  state: string
+  cpu: number
+  mem: number
+  rssKb: number
+  threads: number
+  started: string
+  exe: string
+  cwd: string
+  command: string
+  openFiles: number
 }
 
 export interface Pm2Process {

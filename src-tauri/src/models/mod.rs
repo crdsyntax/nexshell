@@ -292,6 +292,88 @@ pub struct SecurityFinding {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SessionEntry {
+    pub user: String,
+    pub tty: String,
+    pub from: String,
+    pub start: String,
+    pub end: String,
+    pub duration: String,
+    pub current: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactEntry {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub tag: String,
+    pub birth: String,
+    pub change: String,
+    pub size_bytes: u64,
+    pub size_human: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    pub path: String,
+    pub line: u32,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretHit {
+    pub path: String,
+    pub line: u32,
+    pub kind: String,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsEntry {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub size_bytes: u64,
+    pub size_human: String,
+    pub mode: String,
+    pub modified: String,
+    pub empty: bool,
+    pub hidden: bool,
+    pub symlink: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirListing {
+    pub path: String,
+    pub parent: String,
+    pub entries: Vec<FsEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessDetails {
+    pub pid: u32,
+    pub user: String,
+    pub state: String,
+    pub cpu: f64,
+    pub mem: f64,
+    pub rss_kb: u64,
+    pub threads: u64,
+    pub started: String,
+    pub exe: String,
+    pub cwd: String,
+    pub command: String,
+    pub open_files: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NodeProcess {
     pub pid: u32,
     pub user: String,
@@ -369,6 +451,38 @@ pub struct SudoAccount {
     pub last_login: String,
     pub authorized_keys: u32,
     pub groups: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountEvidence {
+    pub kind: String,
+    pub timestamp: String,
+    pub actor: String,
+    pub source_ip: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountOrigin {
+    pub user: String,
+    pub account: String,
+    pub group: String,
+    pub passwd_mtime: String,
+    pub group_mtime: String,
+    pub shadow_mtime: String,
+    pub home_birth: String,
+    pub home_change: String,
+    pub created_at: String,
+    pub created_by: String,
+    pub source_ip: String,
+    pub evidence: Vec<AccountEvidence>,
+    pub logins: Vec<String>,
+    pub history: Vec<String>,
+    pub ssh_log: Vec<String>,
+    pub notes: Vec<String>,
+    pub audit_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

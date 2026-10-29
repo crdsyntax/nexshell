@@ -1,4 +1,5 @@
 import { profileService } from '@/services/profile.service'
+import { terminalService } from '@/services/terminal.service'
 import { useAppStore } from '@/store/useAppStore'
 import type { Profile } from '@/types'
 
@@ -102,4 +103,35 @@ export async function deleteProfile(profile: Profile): Promise<void> {
   } catch (error) {
     store.pushToast('error', String(error))
   }
+}
+
+/**
+ * Opens a terminal tab and injects a command once the SSH session is ready.
+ * Used by the monitor's terminal injection panel.
+ */
+export function openTerminalWithCommand(profile: Profile, command: string): void {
+  const tabId = useAppStore.getState().openTerminalTab(profile)
+  const deadline = Date.now() + 15_000
+
+  const attempt = () => {
+    const tab = useAppStore.getState().tabs.find((item) => item.id === tabId)
+    if (!tab) return
+    if (tab.sessionId) {
+      const sessionId = tab.sessionId
+      // Give the remote shell time to print its prompt before typing.
+      window.setTimeout(() => {
+        void terminalService.write(sessionId, `${command}\n`)
+      }, 700)
+      return
+    }
+    if (tab.status === 'closed' || tab.status === 'error' || Date.now() > deadline) {
+      useAppStore
+        .getState()
+        .pushToast('error', 'No se pudo abrir la terminal para ejecutar el comando.')
+      return
+    }
+    window.setTimeout(attempt, 150)
+  }
+
+  window.setTimeout(attempt, 150)
 }
