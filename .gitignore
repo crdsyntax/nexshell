@@ -1,0 +1,15 @@
+node_modules/
+frontend/node_modules/
+frontend/dist/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+src-tauri/target/*
+specs/*
+*.tsbuildinfo

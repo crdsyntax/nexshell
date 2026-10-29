@@ -1,0 +1,19 @@
+{
+  "name": "twoshell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "2Shell - multi-terminal SSH operations console built with Tauri and Rust",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "frontend:dev": "cd frontend && bun run dev",
+    "frontend:build": "cd frontend && bun run build",
+    "frontend:check": "cd frontend && bun run check",
+    "check": "cd src-tauri && cargo check",
+    "test": "cd src-tauri && cargo test --lib"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2"
+  }
+}

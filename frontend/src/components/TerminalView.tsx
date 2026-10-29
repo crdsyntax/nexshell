@@ -1,0 +1,209 @@
+import { useEffect, useRef } from 'react'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import '@xterm/xterm/css/xterm.css'
+import { attachTerminal, detachTerminal } from '@/lib/terminalBus'
+import { terminalService } from '@/services/terminal.service'
+import { useAppStore } from '@/store/useAppStore'
+import { AlertIcon, RefreshIcon, TerminalIcon } from '@/components/Icons'
+import type { WorkspaceTab } from '@/types'
+
+interface TerminalViewProps {
+  tab: WorkspaceTab
+}
+
+const THEME = {
+  background: '#0a0d13',
+  foreground: '#dbe4f3',
+  cursor: '#5eead4',
+  cursorAccent: '#0a0d13',
+  selectionBackground: '#2b3b55',
+  black: '#161c28',
+  red: '#f87171',
+  green: '#34d399',
+  yellow: '#fbbf24',
+  blue: '#60a5fa',
+  magenta: '#c084fc',
+  cyan: '#5eead4',
+  white: '#e5eaf3',
+  brightBlack: '#64748b',
+  brightRed: '#fca5a5',
+  brightGreen: '#6ee7b7',
+  brightYellow: '#fde68a',
+  brightBlue: '#93c5fd',
+  brightMagenta: '#d8b4fe',
+  brightCyan: '#99f6e4',
+  brightWhite: '#f8fafc',
+}
+
+export function TerminalView({ tab }: TerminalViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
+  const sessionRef = useRef<string | undefined>(undefined)
+  const reconnectRef = useRef<() => void>(() => {})
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    if (mountedRef.current || !containerRef.current) return
+    mountedRef.current = true
+
+    const term = new Terminal({
+      fontFamily:
+        '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 13,
+      lineHeight: 1.22,
+      letterSpacing: 0,
+      cursorBlink: true,
+      cursorStyle: 'bar',
+      scrollback: 8_000,
+      allowTransparency: true,
+      theme: THEME,
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    term.open(containerRef.current)
+    fit.fit()
+    fitRef.current = fit
+    termRef.current = term
+
+    const store = () => useAppStore.getState()
+
+    const inputDisposable = term.onData((data) => {
+      const sessionId = sessionRef.current
+      if (!sessionId) return
+      void terminalService.write(sessionId, data).catch(() => {
+        store().setTabStatus(tab.id, 'error', 'terminal input channel closed')
+      })
+    })
+
+    const resizeDisposable = term.onResize(({ cols, rows }) => {
+      const sessionId = sessionRef.current
+      if (!sessionId) return
+      void terminalService.resize(sessionId, cols, rows)
+    })
+
+    let cancelled = false
+
+    const connect = async () => {
+      if (cancelled) return
+      store().setTabStatus(tab.id, 'connecting')
+      const cols = term.cols || 120
+      const rows = term.rows || 32
+
+      try {
+        const info =
+          tab.processPid !== undefined
+            ? await terminalService.openProcess(tab.profileId, tab.processPid, cols, rows)
+            : tab.directory
+              ? await terminalService.openDirectory(
+                  tab.profileId,
+                  tab.directory,
+                  cols,
+                  rows,
+                )
+              : await terminalService.open(tab.profileId, cols, rows)
+        if (cancelled) {
+          void terminalService.close(info.sessionId)
+          return
+        }
+        sessionRef.current = info.sessionId
+        attachTerminal(info.sessionId, (bytes) => term.write(bytes))
+        store().setTabSession(tab.id, info)
+        term.focus()
+      } catch (error) {
+        if (cancelled) return
+        // The pool already retries transient failures according to the
+        // profile. Auth/validation failures must not be retried from the UI.
+        store().setTabStatus(tab.id, 'error', String(error))
+      }
+    }
+
+    reconnectRef.current = () => {
+      if (cancelled) return
+      const previous = sessionRef.current
+      if (previous) detachTerminal(previous)
+      sessionRef.current = undefined
+      term.reset()
+      void connect()
+    }
+
+    const observer = new ResizeObserver(() => {
+      window.requestAnimationFrame(() => {
+        const element = containerRef.current
+        if (!element || element.clientWidth < 60 || element.clientHeight < 40) return
+        try {
+          fit.fit()
+        } catch {
+          // container was hidden during layout; the next resize retries
+        }
+      })
+    })
+    observer.observe(containerRef.current)
+
+    const onFocus = () => term.focus()
+    containerRef.current.addEventListener('click', onFocus)
+
+    void connect()
+
+    return () => {
+      cancelled = true
+      containerRef.current?.removeEventListener('click', onFocus)
+      observer.disconnect()
+      inputDisposable.dispose()
+      resizeDisposable.dispose()
+      const sessionId = sessionRef.current
+      if (sessionId) {
+        detachTerminal(sessionId)
+        void terminalService.close(sessionId)
+      }
+      term.dispose()
+      termRef.current = null
+      fitRef.current = null
+    }
+    // The terminal is bound to the tab identity, not to its status updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.id, tab.profileId, tab.processPid, tab.directory])
+
+  useEffect(() => {
+    if (tab.status !== 'closed' && tab.status !== 'error') return
+    const term = termRef.current
+    if (!term) return
+    const label = tab.status === 'error' ? 'error' : 'disconnected'
+    term.writeln(`\r\n\x1b[38;5;203m── ${label}: ${tab.error ?? 'session ended'} ──\x1b[0m`)
+  }, [tab.status, tab.error])
+
+  return (
+    <div className="terminal-view">
+      <div className="terminal-view__chrome">
+        <div className="terminal-view__title">
+          <TerminalIcon size={13} />
+          <span>{tab.title}</span>
+          <span className={`tab-status tab-status--${tab.status}`} />
+        </div>
+        <div className="terminal-view__hint">
+          {tab.status === 'connecting'
+            ? tab.error ?? 'opening PTY…'
+            : tab.status === 'connected'
+              ? 'xterm-256color · PTY'
+              : tab.status}
+        </div>
+      </div>
+      <div ref={containerRef} className="terminal-view__terminal" />
+      {(tab.status === 'closed' || tab.status === 'error') && (
+        <div className="terminal-overlay">
+          <div className="terminal-overlay__card">
+            <AlertIcon size={20} />
+            <strong>
+              {tab.status === 'error' ? 'Terminal error' : 'Session closed'}
+            </strong>
+            <p>{tab.error ?? 'The remote shell is no longer available.'}</p>
+            <button className="primary-button" onClick={() => reconnectRef.current()}>
+              <RefreshIcon size={15} /> Reconnect
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

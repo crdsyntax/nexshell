@@ -1,0 +1,31 @@
+# Demo SSH host for 2Shell.
+#
+#   docker build -f dev/Dockerfile.demo -t nexshell-demo .
+#   docker run --rm -p 2222:22 --name nexshell-demo nexshell-demo
+#
+# Connect NexShell to 127.0.0.1:2222 with deploy / deploy.
+# The container has no systemd; NexShell falls back to the SysV `service`
+# scripts for start/stop/restart/reload.
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openssh-server nginx apache2 sudo procps findutils coreutils hostname \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash deploy \
+    && echo 'deploy:deploy' | chpasswd \
+    && printf 'deploy ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/nexshell-demo \
+    && chmod 0440 /etc/sudoers.d/nexshell-demo
+
+RUN mkdir -p /run/sshd \
+    && ssh-keygen -A \
+    && printf 'PasswordAuthentication yes\nPermitRootLogin no\n' \
+        > /etc/ssh/sshd_config.d/99-nexshell-demo.conf
+
+EXPOSE 22
+
+CMD ["/usr/sbin/sshd", "-D", "-e"]
