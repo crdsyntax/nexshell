@@ -49,8 +49,22 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
 - **Monitor en dos columnas**: Top processes a la izquierda y PM2 a la derecha, más un
   visor de procesos Node activos.
 - **Network**: pestaña dedicada con puertos en escucha, conexiones establecidas, proceso
-  y PID, marca de exposición pública y resumen de sockets/DNS/ruta.
-- **Forensics**: historial de accesos SSH con IPs, artefactos de `/root` con fechas de
+  y PID, marca de exposición pública, **TX/RX/RTT por conexión con auto-refresco
+  configurable y tasas TX/s · RX/s**, visor de tráfico por dirección con acumulado,
+  **copia de las tablas en Markdown**, **titularidad de la IP remota** (ASN,
+  organización, ISP, país, reverse DNS, rango registrado y contacto de abuso vía
+  WHOIS/RDAP), **proceso real por PID** (cmdline completo, cwd, ejecutable, usuario y
+  métricas), porque `ss` solo entrega el nombre corto del kernel, y **diagnóstico de la
+  conexión** (socket e inodo, proceso padre, FDs, otras conexiones del PID, DNS inverso,
+  variables de entorno, referencias al IP/host/puerto en el proyecto y sondeo TLS
+  manual). El detalle se abre **a pantalla completa** con pestañas **Tráfico**, **Proceso**,
+  **Diagnóstico** y **Titular IP**.
+- **IPs del equipo**: la barra de estado muestra `LOCAL` (interfaz con salida) y `WAN`
+  (IP pública por HTTPS); clic para copiarlas.
+- **Alertas en segundo plano**: botón `Alerts`; mientras la app esté abierta (aunque esté
+  minimizada) notifica accesos SSH y procesos con PPID 1 iniciados automáticamente.
+- **Forensics**: intentos SSH con resultado (éxito/fallo, método e IP), historial de
+  accesos con IPs, artefactos de `/root` con fechas de
   creación y etiquetas (IDE/CLI de IA, herramientas, credenciales), búsqueda recursiva y
   detección de credenciales sin exponer valores.
 - **Sudoers**: en Security, grupos con privilegios, reglas con `NOPASSWD` resaltado,
@@ -60,11 +74,14 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
   (`auid`), desde qué IP, cuándo, con evidencia de auditd/secure/sudo/last.
 - **Árbol de archivos en la terminal**: panel derecho tipo VS Code que sigue el `cd`
   (OSC 7), distingue carpetas/archivos/ocultos/vacíos y permite crear, renombrar,
-  eliminar, copiar ruta y abrir terminal en la carpeta. Doble clic en un archivo de texto
+  eliminar, copiar ruta y abrir terminal en la carpeta. Incluye **mostrar/ocultar
+  archivos ocultos** y **clic derecho → propiedades**. Doble clic en un archivo de texto
   abre un **editor remoto** (vim/nano/vi) en un modal con PTY.
 - **PM2**: en la pestaña Monitor se listan las apps con estado, CPU, memoria,
   reinicios y uptime; se pueden iniciar, detener, reiniciar o eliminar del listado y
-  ver el tail de los logs `out`/`error`.
+  ver el tail de los logs `out`/`error` con **coloreado por severidad** (error/aviso/stack),
+  filtro «solo errores» y copia de una línea, de los errores o del log completo. El modal
+  es redimensionable y recuerda el tamaño.
 - **Incident**: escaneo de procesos desde directorios temporales, binarios/scripts
   ocultos, variables de entorno sospechosas, conexiones salientes, claves autorizadas,
   historial de root y contenedores. Permite **matar el proceso**, **poner en
@@ -335,6 +352,7 @@ almacena la contraseña de sudo.
 | `pm2_logs` | Tail de out/error logs |
 | `node_processes` | Procesos Node/PM2 con CPU y memoria |
 | `network_scan` | Puertos y conexiones |
+| `network_inspect` | Diagnóstico de una conexión: socket, proceso, FDs, entorno, referencias y TLS opcional |
 | `sudoers_report` | Grupos, reglas y cuentas de sudoers |
 | `sudoers_remove_rule` | Elimina una regla con backup y visudo |
 | `system_user_lock` | Bloquea/desbloquea una cuenta |

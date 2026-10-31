@@ -1,9 +1,17 @@
 import { ipc } from '@/lib/api'
-import type { ArtifactEntry, SearchHit, SecretHit, SessionEntry } from '@/types'
+import type {
+  ArtifactEntry,
+  AuthAttempt,
+  SearchHit,
+  SecretHit,
+  SessionEntry,
+} from '@/types'
 
 export const forensicsService = {
   sessions: (profileId: string) =>
     ipc.invoke<SessionEntry[]>('forensics_sessions', { profileId }),
+  auth: (profileId: string, limit = 300) =>
+    ipc.invoke<AuthAttempt[]>('forensics_auth', { profileId, limit }),
   artifacts: (profileId: string, path: string) =>
     ipc.invoke<ArtifactEntry[]>('forensics_artifacts', { profileId, path }),
   search: (profileId: string, path: string, query: string, regex: boolean) =>

@@ -23,12 +23,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
 
             let secrets = Arc::new(SecretBox::load_or_create(&data_dir.join("master.key"))?);
-            // Migrates the previous JSON store into SQLite on first start.
             let storage = Arc::new(Storage::open(
                 &data_dir.join("nexshell.db"),
                 Some(&data_dir.join("nexshell.json")),
@@ -70,6 +70,11 @@ pub fn run() {
             presentation::tauri::commands::forensics_artifacts,
             presentation::tauri::commands::forensics_search,
             presentation::tauri::commands::forensics_secrets,
+            presentation::tauri::commands::forensics_auth,
+            presentation::tauri::commands::alerts_start,
+            presentation::tauri::commands::alerts_stop,
+            presentation::tauri::commands::alerts_status,
+            presentation::tauri::commands::local_ip,
             presentation::tauri::commands::fs_create,
             presentation::tauri::commands::fs_rename,
             presentation::tauri::commands::fs_delete,
@@ -107,6 +112,7 @@ pub fn run() {
             presentation::tauri::commands::pm2_logs,
             presentation::tauri::commands::node_processes,
             presentation::tauri::commands::network_scan,
+            presentation::tauri::commands::network_inspect,
             presentation::tauri::commands::sudoers_report,
             presentation::tauri::commands::sudoers_remove_rule,
             presentation::tauri::commands::system_user_lock,

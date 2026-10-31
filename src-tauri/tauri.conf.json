@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:5183 http://localhost:5183"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:5183 http://localhost:5183 https://api.ipify.org https://ifconfig.me https://icanhazip.com https://ipwho.is https://ipinfo.io https://rdap.org https://rdap.arin.net https://rdap.db.ripe.net https://rdap.apnic.net https://rdap.lacnic.net https://rdap.afrinic.net"
     }
   },
   "bundle": {

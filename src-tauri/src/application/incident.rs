@@ -99,8 +99,6 @@ impl IncidentManager {
         })
     }
 
-    /// Kills a process only when its executable lives in a temporary directory or has
-    /// been deleted from disk.
     pub async fn kill_process(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -132,7 +130,6 @@ echo "cmdline=$cmd"
         run_action(pools, profile, &script).await
     }
 
-    /// Moves a file from a temporary directory into the quarantine folder.
     pub async fn quarantine(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -160,7 +157,6 @@ echo "sha256=$sha"
         run_action(pools, profile, &script).await
     }
 
-    /// Blocks or unblocks an IP address on INPUT and OUTPUT.
     pub async fn block_ip(
         pools: &PoolManager,
         profile: &ConnectionProfile,

@@ -1,7 +1,5 @@
 use serde::ser::{Serialize, Serializer};
 
-/// Every error that can cross the Tauri boundary. Variants are deliberately
-/// coarse: the UI only needs an actionable message, and logs keep the detail.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("SSH error: {0}")]
@@ -38,8 +36,6 @@ impl Serialize for AppError {
 }
 
 impl AppError {
-    /// Authentication failures and invalid input will not succeed on a second
-    /// attempt; retrying them only risks account lockout or fail2ban bans.
     pub fn is_retryable(&self) -> bool {
         match self {
             AppError::Auth(_)

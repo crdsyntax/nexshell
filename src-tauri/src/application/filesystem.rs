@@ -10,8 +10,6 @@ const SCAN_TIMEOUT: Duration = Duration::from_secs(180);
 pub struct FilesystemManager;
 
 impl FilesystemManager {
-    /// Runs the exact `find / -xdev -type f -exec du -h {} +` pipeline requested
-    /// by the UI, with `sudo -n` when the profile has elevated privileges.
     pub async fn large_files(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -141,15 +139,11 @@ exit 0"#,
         })
     }
 
-    /// Verify that the SSH user (not root) can enter a directory before a
-    /// terminal is opened there.
     pub async fn ensure_directory(
         pools: &PoolManager,
         profile: &ConnectionProfile,
         directory: &str,
     ) -> AppResult<()> {
-        // The filesystem root is a valid terminal target even though it is not
-        // a valid file path for properties/delete operations.
         if directory != "/" {
             validate_path(directory)?;
         }

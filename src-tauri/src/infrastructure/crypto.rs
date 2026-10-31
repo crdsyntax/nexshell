@@ -10,11 +10,6 @@ use std::path::Path;
 const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 
-/// Prototype secret storage: a 32-byte master key with mode 0600 next to the
-/// profile database, and AES-256-GCM for every credential blob.
-///
-/// Production note: replace the key file with the OS keyring (or Tauri
-/// Stronghold) so the key is protected by the platform user session.
 pub struct SecretBox {
     cipher: Aes256Gcm,
 }

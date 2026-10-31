@@ -326,8 +326,6 @@ async fn client_binary(pools: &PoolManager, profile: &ConnectionProfile) -> AppR
 }
 
 fn privileged_client(profile: &ConnectionProfile, binary: &str) -> String {
-    // The Linux root user already has socket access to MariaDB; avoid
-    // requiring a sudoers entry for the client in that case.
     if profile.username == "root" {
         shell_quote(binary)
     } else {

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Capabilities required by NexShell: core IPC, events and the native file picker for SSH keys.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "notification:default"]
 }

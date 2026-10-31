@@ -175,8 +175,6 @@ impl CronManager {
                 && !line.contains("SHELL=")
                 && !line.contains("PATH=")
             {
-                // Anacron entries are reported as evidence but not parsed into
-                // crontab syntax, which differs from classic cron.
                 errors.push(format!("/etc/anacrontab: {}", line.trim()));
             }
         }
@@ -504,7 +502,6 @@ echo "removed 1 entry from $file"
         })
     }
 
-    /// Restores a cron source from a backup created by this app.
     pub async fn restore_backup(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -559,9 +556,6 @@ echo "$file restored from $backup"
         Ok(combined)
     }
 
-    /// Removes every entry flagged as suspicious from the writable sources
-    /// (`crontab:<user>`, `/etc/crontab`, `/etc/cron.d/<file>`). Each source keeps a
-    /// single backup of the original file.
     pub async fn delete_suspicious(
         pools: &PoolManager,
         profile: &ConnectionProfile,

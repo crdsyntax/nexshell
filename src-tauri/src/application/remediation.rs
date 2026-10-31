@@ -9,8 +9,6 @@ use std::time::Duration;
 const SSHD_DIR: &str = "/etc/ssh/sshd_config.d";
 const FIX_TIMEOUT: Duration = Duration::from_secs(90);
 
-/// Findings that 2Shell can remediate automatically. Every fix is local to a config
-/// drop-in, validates the result, and rolls back on failure.
 pub fn is_fixable(finding_id: &str) -> bool {
     matches!(
         finding_id,
@@ -120,8 +118,6 @@ stat -c '%a %U:%G %n' /etc/passwd
             run_fix(pools, profile, script).await?
         }
         "world-writable-etc" => {
-            // Evidence is re-collected remotely so a stale report cannot change bits on
-            // files that are already correct.
             let script = r####"set -e
 count=0
 for file in $(find /etc -xdev -type f -perm -0002 2>/dev/null); do
@@ -265,8 +261,6 @@ echo "__OPTION__=$effective"
         .replace("__ACCEPT__", &accepted_values(option, value))
 }
 
-/// `sshd -T` prints the deprecated spelling `without-password` for
-/// `PermitRootLogin prohibit-password`, so verification must accept both aliases.
 fn accepted_values(option: &str, value: &str) -> String {
     match (option.to_lowercase().as_str(), value) {
         ("permitrootlogin", "prohibit-password") => {

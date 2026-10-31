@@ -20,9 +20,7 @@ const MAX_INPUT_CHUNK: usize = 64 * 1024;
 pub struct TerminalOptions {
     pub cols: u32,
     pub rows: u32,
-    /// Optional directory to `cd` into once the remote shell starts.
     pub initial_directory: Option<String>,
-    /// Optional tab title override (used for process terminals).
     pub title: Option<String>,
 }
 
@@ -47,7 +45,6 @@ struct TerminalSession {
     info: TerminalInfo,
     profile_name: String,
     input: mpsc::Sender<InputMsg>,
-    /// Holding the lease keeps one pooled transport reserved for this terminal.
     #[allow(dead_code)]
     lease: crate::application::pool::PoolLease,
     closed: Arc<AtomicBool>,
@@ -57,7 +54,6 @@ struct TerminalSession {
 #[serde(rename_all = "camelCase")]
 struct TerminalDataEvent {
     session_id: String,
-    /// base64 so UTF-8 sequences split across SSH packets stay intact.
     data: String,
 }
 
@@ -69,8 +65,6 @@ struct TerminalClosedEvent {
     exit_status: Option<i32>,
 }
 
-/// Owns every live PTY-backed shell. Multiple terminals can share a profile;
-/// each consumes one pool lease and one SSH session channel.
 pub struct TerminalManager {
     sessions: RwLock<HashMap<String, Arc<TerminalSession>>>,
     audit: Arc<AuditService>,
@@ -168,8 +162,6 @@ impl TerminalManager {
             .map(str::trim)
             .filter(|directory| !directory.is_empty())
         {
-            // Buffer the `cd` before the writer task starts. The SSH server
-            // feeds PTY input to the shell as soon as it is spawned.
             let command = format!("cd {}\n", shell_quote(directory));
             let _ = input_tx.send(InputMsg::Data(command.into_bytes())).await;
         }
@@ -189,7 +181,6 @@ impl TerminalManager {
 
         let weak: Weak<TerminalManager> = Arc::downgrade(self);
 
-        // Reader: SSH channel -> Tauri event
         let reader_app = app.clone();
         let reader_session_id = session_id.clone();
         let reader_closed = closed.clone();
@@ -262,7 +253,6 @@ impl TerminalManager {
             }
         });
 
-        // Writer: Tauri command -> SSH channel
         let writer_weak = weak;
         let writer_app = app;
         let writer_session_id = session_id.clone();
@@ -374,8 +364,6 @@ impl TerminalManager {
             .collect()
     }
 
-    /// Closes every terminal attached to a profile (used when the profile is
-    /// deleted or its credentials change).
     pub async fn close_profile(&self, profile_id: &str) {
         let ids: Vec<String> = self
             .sessions
@@ -399,8 +387,6 @@ impl TerminalManager {
             .ok_or_else(|| AppError::NotFound(format!("terminal {session_id} does not exist")))
     }
 
-    /// Internal cleanup used by the reader/writer tasks. Idempotent: closing a
-    /// tab removes the session first, so the tasks find nothing to discard.
     async fn discard(&self, session_id: &str) {
         let removed = {
             let mut sessions = self.sessions.write().await;

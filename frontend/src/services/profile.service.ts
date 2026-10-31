@@ -10,6 +10,7 @@ import type {
 } from '@/types'
 
 export const profileService = {
+  localIp: () => ipc.invoke<string>('local_ip'),
   list: () => ipc.invoke<Profile[]>('list_profiles'),
   save: (profile: ProfileInput) => ipc.invoke<Profile>('save_profile', { profile }),
   remove: (id: string) => ipc.invoke<void>('delete_profile', { id }),

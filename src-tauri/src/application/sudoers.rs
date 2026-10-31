@@ -160,7 +160,6 @@ exit 0
         Ok(parse_accounts(&output.stdout))
     }
 
-    /// Removes one sudoers rule, validating the file with visudo and rolling back on error.
     pub async fn remove_rule(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -227,7 +226,6 @@ echo "BACKUP=$backup"
         run_script(pools, profile, &script).await
     }
 
-    /// Locks or unlocks a local account with `passwd -l` / `passwd -u`.
     pub async fn set_lock(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -268,9 +266,6 @@ async fn run_script(
     Ok(combined)
 }
 
-/// `visudo -c` returns non-zero for syntax errors and also for permission
-/// problems in included files (`bad permissions`). The exit code is authoritative;
-/// the text heuristic is only a fallback for hosts that do not report it.
 fn config_is_ok(rc: Option<i32>, output: &str) -> bool {
     if let Some(code) = rc {
         return code == 0;
@@ -363,7 +358,6 @@ fn parse_group(line: &str) -> Option<SudoGroup> {
     Some(SudoGroup { name, gid, members })
 }
 
-/// Parses `principal host=(runas) [NOPASSWD:] commands`.
 fn parse_rule(line: &str, source: &str) -> Option<SudoRule> {
     if line.is_empty()
         || line.starts_with("Defaults")
@@ -487,7 +481,6 @@ mod tests {
 
     #[test]
     fn treats_visudo_exit_code_as_authoritative() {
-        // Mode problems are reported as errors by visudo even when syntax parses.
         let output = "/etc/sudoers.d/99-pakchoi: bad permissions, should be mode 0440\n/etc/sudoers: parsed OK";
         assert!(!config_is_ok(Some(1), output));
         assert!(config_is_ok(Some(0), "/etc/sudoers: parsed OK"));

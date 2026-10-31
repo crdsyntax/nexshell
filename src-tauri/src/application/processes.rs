@@ -64,8 +64,6 @@ exit 0
 pub struct ProcessManager;
 
 impl ProcessManager {
-    /// Resolve the working directory of a process (falling back to the
-    /// executable's directory) and report whether the SSH user can enter it.
     pub async fn locate(
         pools: &PoolManager,
         profile_id: &str,
@@ -104,7 +102,6 @@ exit 0"#
         Ok(location)
     }
 
-    /// Snapshot of a single process: state, resources, cwd and open files.
     pub async fn details(
         pools: &PoolManager,
         profile_id: &str,
@@ -137,7 +134,6 @@ ls /proc/{pid}/fd 2>/dev/null | wc -l
         parse_details(pid, &sections)
     }
 
-    /// Lists Node.js/PM2 processes with CPU, memory and elapsed time.
     pub async fn node_processes(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -354,14 +350,13 @@ fn parse_details(
         .map(|line| line.trim().to_string())
         .ok_or_else(|| AppError::Remote(format!("process {pid} not found")))?;
 
-    // pid user stat pcpu pmem rss nlwp lstart(5 tokens) args...
     let fields: Vec<&str> = ps.split_whitespace().collect();
     if fields.len() < 12 {
         return Err(AppError::Remote(format!(
             "unexpected ps output for pid {pid}"
         )));
     }
-    let command = fields[11..].join(" ");
+    let command = fields[12..].join(" ");
     Ok(ProcessDetails {
         pid,
         user: fields[1].to_string(),
@@ -370,7 +365,7 @@ fn parse_details(
         mem: fields[4].parse().unwrap_or(0.0),
         rss_kb: fields[5].parse().unwrap_or(0),
         threads: fields[6].parse().unwrap_or(0),
-        started: fields[7..11].join(" "),
+        started: fields[7..12].join(" "),
         exe: section_line(sections, "EXE"),
         cwd: section_line(sections, "CWD"),
         command,
@@ -399,6 +394,7 @@ mod details_tests {
         assert_eq!(details.threads, 11);
         assert_eq!(details.cwd, "/var/www/app");
         assert_eq!(details.open_files, 42);
-        assert!(details.command.contains("server.js"));
+        assert_eq!(details.started, "Thu Oct 29 15:41:02 2026");
+        assert_eq!(details.command, "node /var/www/app/server.js");
     }
 }

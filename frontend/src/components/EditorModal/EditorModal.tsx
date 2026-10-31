@@ -6,6 +6,7 @@ import { attachTerminal, detachTerminal } from '@/lib/terminalBus'
 import { terminalService } from '@/services/terminal.service'
 import { fsService } from '@/services/fs.service'
 import { AlertIcon, XIcon } from '@/components/Icons'
+import { useResizable } from '@/lib/useResizable'
 
 interface EditorModalProps {
   profileId: string
@@ -51,6 +52,11 @@ export function EditorModal({ profileId, path, onClose }: EditorModalProps) {
   const sessionRef = useRef<string | undefined>(undefined)
   const termRef = useRef<Terminal | null>(null)
   const [editor, setEditor] = useState('')
+  const editorResize = useResizable({
+    initial: { width: 1120, height: 700 },
+    min: { width: 600, height: 360 },
+    storageKey: '2shell.modal.editor.size',
+  })
   const [status, setStatus] = useState('abriendo editor…')
   const [error, setError] = useState<string | null>(null)
 
@@ -117,8 +123,8 @@ export function EditorModal({ profileId, path, onClose }: EditorModalProps) {
       window.requestAnimationFrame(() => {
         try {
           fit.fit()
-        } catch {
-          // container hidden during layout
+        } catch (error) {
+          console.debug('resize skipped', error)
         }
       })
     })
@@ -156,7 +162,12 @@ export function EditorModal({ profileId, path, onClose }: EditorModalProps) {
         if (event.target === event.currentTarget) close()
       }}
     >
-      <div className="modal modal--editor" role="dialog" aria-modal="true">
+      <div
+        className="modal modal--editor modal--resizable"
+        role="dialog"
+        aria-modal="true"
+        style={editorResize.style}
+      >
         <header className="modal__header">
           <div>
             <h2>
@@ -189,6 +200,11 @@ export function EditorModal({ profileId, path, onClose }: EditorModalProps) {
             Cerrar
           </button>
         </footer>
+        <span
+          className="modal-resize"
+          onPointerDown={editorResize.start}
+          title="Arrastrar para redimensionar"
+        />
       </div>
     </div>
   )

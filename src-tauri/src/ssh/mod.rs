@@ -12,10 +12,6 @@ use std::time::Duration;
 
 const MAX_EXEC_OUTPUT: usize = 4 * 1024 * 1024;
 
-// ---------------------------------------------------------------------------
-// Known hosts (trust on first use)
-// ---------------------------------------------------------------------------
-
 pub struct KnownHostsStore {
     storage: Arc<Storage>,
 }
@@ -25,8 +21,6 @@ impl KnownHostsStore {
         Self { storage }
     }
 
-    /// Returns true when the presented key matches the pinned key, or when it
-    /// is the first key seen for this endpoint (TOFU, persisted immediately).
     pub fn verify_or_record(&self, host: &str, port: u16, fingerprint: &str) -> bool {
         match self.storage.known_host(host, port) {
             Some(expected) => expected == fingerprint,
@@ -92,10 +86,6 @@ impl russh::client::Handler for ClientHandler {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Connection
-// ---------------------------------------------------------------------------
-
 pub struct SshConnection {
     pub fingerprint: String,
     handle: Handle<ClientHandler>,
@@ -115,8 +105,6 @@ fn load_private_key(
     private_key: Option<&str>,
     passphrase: Option<&str>,
 ) -> AppResult<PrivateKey> {
-    // An inline key is an explicit choice; a stored path may be stale after
-    // the user pasted a different key in the form. Prefer the inline key.
     let parsed = if let Some(key) = private_key.map(str::trim).filter(|k| !k.is_empty()) {
         russh::keys::decode_secret_key(key, passphrase)
     } else if let Some(path) = key_path.filter(|p| !p.trim().is_empty()) {
@@ -152,8 +140,6 @@ fn load_private_key(
     })
 }
 
-/// Inspect a local private key without connecting. Used by the profile form to
-/// warn as soon as the file picker returns an encrypted key.
 pub fn probe_private_key(path: &str) -> KeyProbe {
     let expanded = expand_local_path(path);
     let display = expanded.to_string_lossy().to_string();
@@ -275,7 +261,6 @@ impl SshConnection {
                 }
             }
             AuthMethod::Key => {
-                // Do not trim: passphrases may legitimately contain spaces.
                 let passphrase = profile.passphrase.as_deref().filter(|p| !p.is_empty());
                 let key = load_private_key(
                     profile.key_path.as_deref(),
@@ -327,7 +312,6 @@ impl SshConnection {
         self.handle.is_closed()
     }
 
-    /// Run one command through a dedicated session channel and capture output.
     pub async fn exec(&self, command: &str, timeout: Duration) -> AppResult<ExecOutput> {
         let fut = async {
             let mut channel = self
@@ -348,9 +332,6 @@ impl SshConnection {
             let mut truncated = false;
 
             loop {
-                // Some servers send EOF before the exit-status packet. Do not
-                // break immediately: wait briefly for the status so a successful
-                // `cat` is not reported as a failure.
                 let message = if saw_eof {
                     match tokio::time::timeout(Duration::from_secs(1), channel.wait()).await {
                         Ok(message) => message,
@@ -414,8 +395,6 @@ impl SshConnection {
         })?
     }
 
-    /// Open an interactive PTY-backed shell. The channel is split so the reader
-    /// and writer can live in independent tasks without borrowing conflicts.
     pub async fn open_shell(
         &self,
         cols: u32,
@@ -449,10 +428,6 @@ impl SshConnection {
         Ok((read_half, Box::new(write_half)))
     }
 }
-
-// ---------------------------------------------------------------------------
-// ShellWriter: erase the private `Msg` type from the public API
-// ---------------------------------------------------------------------------
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 

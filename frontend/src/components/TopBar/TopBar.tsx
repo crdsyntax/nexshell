@@ -11,15 +11,18 @@ import {
 } from '@/lib/actions'
 import {
   ActivityIcon,
+  BellIcon,
   DatabaseIcon,
   EditIcon,
   FileIcon,
   NetworkIcon,
+  PlugIcon,
   RefreshIcon,
   ServerIcon,
   ShieldIcon,
 } from '@/components/Icons'
 import { Logo } from '@/components/Logo'
+import { alertsService } from '@/services/alerts.service'
 import { shortFingerprint } from '@/lib/format'
 import type { Profile } from '@/types'
 
@@ -48,6 +51,25 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
   const stats = profile && poolStats?.profileId === profile.id ? poolStats : null
 
   const action = (kind: string) => (activeKind === kind ? 'is-active' : '')
+  const alertsOn = useAppStore((state) =>
+    profile ? Boolean(state.alerts[profile.id]) : false,
+  )
+  const setAlerts = useAppStore((state) => state.setAlerts)
+
+  const toggleAlerts = async () => {
+    if (!profile) return
+    try {
+      if (alertsOn) {
+        await alertsService.stop(profile.id)
+        setAlerts(profile.id, false)
+      } else {
+        await alertsService.start(profile.id, 60)
+        setAlerts(profile.id, true)
+      }
+    } catch (error) {
+      useAppStore.getState().pushToast('error', String(error))
+    }
+  }
 
   return (
     <header className="top-bar">
@@ -71,6 +93,26 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
               pool {stats.inUse}/{stats.maxConnections}
             </span>
           )}
+          <span className="host-actions">
+            <button
+              className="host-action"
+              onClick={() => void detectServerFor(profile.id, true)}
+              title={
+                server
+                  ? `Detect again · ${shortFingerprint(server.fingerprint)}`
+                  : 'Detect operating system and services'
+              }
+            >
+              <RefreshIcon size={12} />
+            </button>
+            <button
+              className="host-action"
+              onClick={() => void connectProfile(profile.id)}
+              title="Open a pooled SSH transport"
+            >
+              <PlugIcon size={12} />
+            </button>
+          </span>
         </div>
       ) : (
         <div className="top-bar__host top-bar__host--empty">NO HOST SELECTED</div>
@@ -88,20 +130,6 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
         </button>
         {profile && (
           <>
-            <button
-              className="top-action"
-              onClick={() => void detectServerFor(profile.id, true)}
-              title={server ? `Fingerprint ${shortFingerprint(server.fingerprint)}` : 'Detect server'}
-            >
-              <RefreshIcon size={13} /> Detect
-            </button>
-            <button
-              className="top-action"
-              onClick={() => void connectProfile(profile.id)}
-              title="Open a pooled SSH transport"
-            >
-              <ShieldIcon size={13} /> Connect
-            </button>
             <button className={`top-action ${action('network')}`} onClick={() => openNetwork(profile)}>
               <NetworkIcon size={13} /> Network
             </button>
@@ -113,6 +141,17 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
               onClick={() => openServices(profile)}
             >
               <ServerIcon size={13} /> Services
+            </button>
+            <button
+              className={`top-action ${alertsOn ? 'is-active' : ''}`}
+              onClick={() => void toggleAlerts()}
+              title={
+                alertsOn
+                  ? 'Alertas en segundo plano activas (SSH y procesos automáticos)'
+                  : 'Activar alertas de accesos SSH y procesos automáticos'
+              }
+            >
+              <BellIcon size={13} /> {alertsOn ? 'Alerts on' : 'Alerts'}
             </button>
             <button className="icon-button icon-button--bordered" onClick={() => onEdit(profile)} title="Edit connection">
               <EditIcon size={14} />

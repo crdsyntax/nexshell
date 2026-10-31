@@ -21,11 +21,6 @@ struct PoolInner {
     closed: bool,
 }
 
-/// Bounded pool of authenticated SSH transports.
-///
-/// Each lease owns one transport; a transport can host many logical channels,
-/// but pooling transports keeps a hard ceiling on sockets and makes retry and
-/// backoff behaviour explicit and observable from the UI.
 pub struct ConnectionPool {
     profile_id: String,
     profile_name: String,
@@ -159,8 +154,6 @@ impl ConnectionPool {
                     inner.idle.remove(index);
                     inner.total = inner.total.saturating_sub(1);
                 } else if selected.is_none() {
-                    // Lease it: ownership moves out of the idle list, so the
-                    // total count stays unchanged (it is now in use).
                     selected = Some(inner.idle.remove(index).connection);
                 } else {
                     index += 1;
@@ -304,10 +297,6 @@ pub fn backoff_delay(policy: &RetryPolicy, attempt: u32) -> Duration {
     Duration::from_millis(exponential.saturating_add(jitter))
 }
 
-// ---------------------------------------------------------------------------
-// Pool registry
-// ---------------------------------------------------------------------------
-
 pub struct PoolManager {
     profiles: Arc<ProfileService>,
     known_hosts: Arc<KnownHostsStore>,
@@ -409,8 +398,6 @@ impl PoolManager {
             .await
     }
 
-    /// Execute SQL that contains a password. The audit trail records only the
-    /// outcome, never the command or its output.
     pub async fn execute_sensitive(
         &self,
         profile_id: &str,
@@ -437,7 +424,6 @@ impl PoolManager {
         result
     }
 
-    /// Polling/status checks that should not pollute the audit trail.
     pub async fn execute_silent(
         &self,
         profile_id: &str,
@@ -448,8 +434,6 @@ impl PoolManager {
             .await
     }
 
-    /// Execute a remote command and append it to the audit trail. `metrics` is
-    /// deliberately excluded to avoid logging every poll.
     pub async fn execute_with_category(
         &self,
         profile_id: &str,

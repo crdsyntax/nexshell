@@ -17,22 +17,18 @@ use crate::application::sudoers::SudoersManager;
 use crate::application::terminal::TerminalOptions;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AccountOrigin, ArtifactEntry, ConfigContent, ConfigEntry, ConnectionProfile, CronBackupSummary,
-    CronDeleteResult, CronReport, DbInfo, DbLoginTest, DbPasswordResult, DbUser, DirListing,
-    ExecOutput, ExecutionLog, FileDeleteResult, FileProperties, IncidentActionResult, IncidentScan,
-    KeyProbe, LargeFile, LogFilter, NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats,
-    ProcessDetails, ProcessKillResult, ProcessLocation, ProfileView, SearchHit, SecretHit,
-    SecurityAuditSummary, SecurityFixResult, SecurityReport, ServerInfo, ServiceActionResult,
-    ServiceStatus, SessionEntry, SshActionResult, SshConfig, SshKey, SudoersReport, TerminalInfo,
-    TestResult, WebServiceInfo,
+    AccountOrigin, ArtifactEntry, AuthAttempt, ConfigContent, ConfigEntry, ConnectionInspection,
+    ConnectionProfile, CronBackupSummary, CronDeleteResult, CronReport, DbInfo, DbLoginTest,
+    DbPasswordResult, DbUser, DirListing, ExecOutput, ExecutionLog, FileDeleteResult,
+    FileProperties, IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogFilter,
+    NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats, ProcessDetails, ProcessKillResult,
+    ProcessLocation, ProfileView, SearchHit, SecretHit, SecurityAuditSummary, SecurityFixResult,
+    SecurityReport, ServerInfo, ServiceActionResult, ServiceStatus, SessionEntry, SshActionResult,
+    SshConfig, SshKey, SudoersReport, TerminalInfo, TestResult, WebServiceInfo,
 };
 use crate::state::AppState;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, State};
-
-// ---------------------------------------------------------------------------
-// Profiles
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub fn list_profiles(state: State<'_, AppState>) -> Vec<ProfileView> {
@@ -45,8 +41,6 @@ pub async fn save_profile(
     state: State<'_, AppState>,
 ) -> AppResult<ProfileView> {
     let view = state.profiles.save(profile)?;
-    // Credentials or pool settings may have changed: stop collectors, then
-    // force fresh transports on the next operation.
     state.metrics.stop(&view.id).await;
     state.pools.invalidate(&view.id).await;
     state.audit.log(
@@ -183,10 +177,6 @@ pub async fn remote_exec(
         .execute_command(&id, &command, Duration::from_secs(60))
         .await
 }
-
-// ---------------------------------------------------------------------------
-// Terminals
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn terminal_open(
@@ -365,10 +355,6 @@ pub async fn terminal_list(state: State<'_, AppState>) -> AppResult<Vec<Terminal
     Ok(state.terminals.list().await)
 }
 
-// ---------------------------------------------------------------------------
-// Metrics
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn monitor_start(
     profile_id: String,
@@ -396,10 +382,6 @@ pub async fn monitor_snapshot(
 ) -> AppResult<Option<crate::models::MetricsSnapshot>> {
     Ok(state.metrics.snapshot(&profile_id).await)
 }
-
-// ---------------------------------------------------------------------------
-// Web services
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn service_detect(
@@ -482,10 +464,6 @@ pub async fn service_logs(
     ServiceManager::logs(&state.pools, &profile, service, lines.unwrap_or(200)).await
 }
 
-// ---------------------------------------------------------------------------
-// Execution log
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub fn list_execution_logs(
     profile_id: Option<String>,
@@ -520,10 +498,6 @@ pub fn clear_execution_logs(
 pub fn audit_db_path(state: State<'_, AppState>) -> String {
     state.audit.db_path()
 }
-
-// ---------------------------------------------------------------------------
-// MariaDB / MySQL
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn database_info(profile_id: String, state: State<'_, AppState>) -> AppResult<DbInfo> {
@@ -643,10 +617,6 @@ pub async fn cron_list(profile_id: String, state: State<'_, AppState>) -> AppRes
     let profile = state.profiles.get(&profile_id)?;
     CronManager::list(&state.pools, &profile).await
 }
-
-// ---------------------------------------------------------------------------
-// SSH access
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn cron_delete_entry(
@@ -804,10 +774,6 @@ pub async fn ssh_set_key_only(
     result
 }
 
-// ---------------------------------------------------------------------------
-// Security audit
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn run_security_audit(
     profile_id: String,
@@ -890,10 +856,6 @@ pub async fn apply_security_fix(
     result
 }
 
-// ---------------------------------------------------------------------------
-// Incident response
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn incident_scan(
     profile_id: String,
@@ -973,10 +935,6 @@ pub async fn incident_block_ip(
     result
 }
 
-// ---------------------------------------------------------------------------
-// PM2
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn pm2_list(profile_id: String, state: State<'_, AppState>) -> AppResult<Pm2Report> {
     let profile = state.profiles.get(&profile_id)?;
@@ -1032,6 +990,18 @@ pub async fn network_scan(
 ) -> AppResult<NetworkReport> {
     let profile = state.profiles.get(&profile_id)?;
     NetworkManager::scan(&state.pools, &profile).await
+}
+
+#[tauri::command]
+pub async fn network_inspect(
+    profile_id: String,
+    pid: u32,
+    remote: String,
+    probe_tls: bool,
+    state: State<'_, AppState>,
+) -> AppResult<ConnectionInspection> {
+    let profile = state.profiles.get(&profile_id)?;
+    NetworkManager::inspect(&state.pools, &profile, pid, &remote, probe_tls).await
 }
 
 #[tauri::command]
@@ -1104,10 +1074,6 @@ pub async fn process_details(
 ) -> AppResult<ProcessDetails> {
     crate::application::processes::ProcessManager::details(&state.pools, &profile_id, pid).await
 }
-
-// ---------------------------------------------------------------------------
-// File tree (terminal sidebar)
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn fs_list(
@@ -1187,10 +1153,6 @@ pub async fn fs_delete(
     result
 }
 
-// ---------------------------------------------------------------------------
-// Forensics
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub async fn forensics_sessions(
     profile_id: String,
@@ -1237,4 +1199,61 @@ pub async fn forensics_secrets(
 ) -> AppResult<Vec<SecretHit>> {
     let profile = state.profiles.get(&profile_id)?;
     ForensicsManager::secrets(&state.pools, &profile, &path).await
+}
+
+#[tauri::command]
+pub async fn alerts_start(
+    profile_id: String,
+    interval_secs: Option<u64>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let profile = state.profiles.get(&profile_id)?;
+    state
+        .alerts
+        .start(&profile, &state.pools, app, interval_secs)
+        .await?;
+    state.audit.log(
+        AuditEvent::new("alert", "start", "success")
+            .profile(Some(&profile_id), Some(&profile.name))
+            .target("background-watch"),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn alerts_stop(profile_id: String, state: State<'_, AppState>) -> AppResult<()> {
+    state.alerts.stop(&profile_id).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn alerts_status(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    Ok(state.alerts.running().await)
+}
+
+#[tauri::command]
+pub async fn forensics_auth(
+    profile_id: String,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<AuthAttempt>> {
+    let profile = state.profiles.get(&profile_id)?;
+    ForensicsManager::auth_attempts(&state.pools, &profile, limit).await
+}
+
+#[tauri::command]
+pub fn local_ip() -> AppResult<String> {
+    use std::net::UdpSocket;
+
+    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|error| {
+        crate::error::AppError::Validation(format!("cannot inspect local network: {error}"))
+    })?;
+    socket.connect("1.1.1.1:53").map_err(|error| {
+        crate::error::AppError::Validation(format!("no local route available: {error}"))
+    })?;
+    let address = socket.local_addr().map_err(|error| {
+        crate::error::AppError::Validation(format!("cannot read local address: {error}"))
+    })?;
+    Ok(address.ip().to_string())
 }

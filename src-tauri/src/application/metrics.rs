@@ -78,8 +78,6 @@ impl MetricsService {
         Self::default()
     }
 
-    /// Starts a polling loop for one profile. Idempotent per profile: the UI can
-    /// mount several panels without spawning duplicate collectors.
     pub async fn start(
         self: &Arc<Self>,
         profile_id: &str,
@@ -88,7 +86,6 @@ impl MetricsService {
         interval_ms: u64,
     ) -> AppResult<()> {
         {
-            // A finished task (panic or aborted externally) must not block a restart.
             let mut watchers = self.watchers.write().await;
             if let Some(existing) = watchers.get(profile_id) {
                 if !existing.handle.is_finished() {
@@ -480,9 +477,7 @@ __HEAD__"#;
         parse_metrics(FIRST, &mut prev, Duration::ZERO).unwrap();
         let snap = parse_metrics(SECOND, &mut prev, Duration::from_secs(2)).unwrap();
 
-        // total delta: 600, idle delta: 400 -> 33.3% busy
         assert_eq!(snap.cpu_total, 33.3);
-        // rx delta 2000 bytes over 2s, tx delta 2000 over 2s
         assert_eq!(snap.net_rx_bps, 1000.0);
         assert_eq!(snap.net_tx_bps, 1000.0);
         assert_eq!(snap.mem_used_kb, 9_000_000);
@@ -501,7 +496,6 @@ cpu0 150 0 150 400 0 0 0 0 0 0
 cpu1 150 0 150 400 0 0 0 0 0 0
 __HEAD__"#;
         let snap = parse_metrics(busy, &mut prev, Duration::from_secs(1)).unwrap();
-        // delta total 800, delta idle 0 -> 100%
         assert_eq!(snap.cpu_total, 100.0);
     }
 

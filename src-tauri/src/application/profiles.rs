@@ -46,8 +46,6 @@ impl ProfileService {
                 let mut profile = profile;
                 if let Some(blob) = blob {
                     if let Ok(plain) = self.decrypt_payload(&blob) {
-                        // Materialize placeholders so the view can report which
-                        // credentials exist without exposing their values.
                         if plain.password.is_some() {
                             profile.password = Some(REDACTED.to_string());
                         }
@@ -139,8 +137,6 @@ impl ProfileService {
         Ok(())
     }
 
-    /// Used by "test connection": reuse stored credentials when the form sends
-    /// empty or redacted secret fields.
     pub fn resolve_for_connection(
         &self,
         mut input: ConnectionProfile,
@@ -292,8 +288,6 @@ impl ProfileService {
             profile.password = existing.password;
         }
 
-        // The profile form allows either a key file or an inline key. When the
-        // user switches source, do not resurrect the other stored credential.
         if profile.clear_private_key {
             profile.private_key = None;
         } else if needs_fallback(&profile.private_key) {
@@ -330,10 +324,6 @@ fn needs_fallback(value: &Option<String>) -> bool {
         Some(v) => v.is_empty() || v == REDACTED,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Server detection
-// ---------------------------------------------------------------------------
 
 const DETECT_SCRIPT: &str = r#"export LC_ALL=C 2>/dev/null
 echo __OS__

@@ -10,8 +10,6 @@ const MAX_OUTPUT_CHARS: usize = 16_384;
 const MAX_ERROR_CHARS: usize = 4_096;
 const PRUNE_EVERY: u64 = 250;
 
-/// Append-only audit trail for connections, remote commands, terminals and
-/// destructive operations. Logging must never break the operation itself.
 pub struct AuditService {
     storage: Arc<Storage>,
     writes: AtomicU64,
@@ -98,8 +96,6 @@ impl AuditService {
     }
 
     pub fn log(&self, event: AuditEvent) {
-        // Metrics run every 1-10 seconds; logging them would drown the audit
-        // trail. Everything else is recorded.
         if event.category == "metrics" || event.category == "silent" {
             return;
         }

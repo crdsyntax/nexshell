@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod audit;
 pub mod cron;
 pub mod database;

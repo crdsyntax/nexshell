@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "seal_version": 1,
+  "seal_algo": "sha256",
+  "session_id": "run-1793469490779-uzn2t",
+  "agent_id": "audit",
+  "status": "running",
+  "iteration": 0,
+  "current_phase": "ANALYZE",
+  "goal": "",
+  "context": {},
+  "pending_approval": null,
+  "approvals": [],
+  "state_hash": "78f94af3762e3d616c9f5235ade5814b2152514c5fce8ea1a79c63c6fbd7fc59",
+  "tampered": false,
+  "updated_at": "2026-10-31T17:58:10.799Z"
+}

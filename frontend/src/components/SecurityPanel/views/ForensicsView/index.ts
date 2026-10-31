@@ -1,0 +1,1 @@
+export { ForensicsView } from './ForensicsView'

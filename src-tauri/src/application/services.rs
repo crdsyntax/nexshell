@@ -134,9 +134,6 @@ pub fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// Prefix a single command with `sudo -n`. Unlike wrapping a whole script in
-/// `sudo sh -c`, this keeps every privileged binary individually whitelistable
-/// in sudoers.
 pub(crate) fn maybe_sudo(profile: &ConnectionProfile, command: &str) -> String {
     if profile.elevated {
         format!("sudo -n {command}")
@@ -426,9 +423,6 @@ exit 0"#,
     ) -> AppResult<ConfigContent> {
         validate_config_path(service, path)?;
         assert_canonical(pools, profile, service, path).await?;
-        // Keep stderr separate so the real failure reason is preserved. The
-        // previous `2>&1` moved "Permission denied" / sudo errors into stdout
-        // and produced an error message ending in a bare colon.
         let script = maybe_sudo(profile, &format!("cat -- {}", shell_quote(path)));
         let output = pools
             .execute_service(&profile.id, &script, Duration::from_secs(20))
@@ -438,7 +432,6 @@ exit 0"#,
             let detail = if !output.stderr.trim().is_empty() {
                 output.stderr.trim().to_string()
             } else if output.exit_status < 0 && !output.stdout.trim().is_empty() {
-                // Do not dump a whole config file as if it were an error message.
                 "the SSH server returned file content without an exit status".to_string()
             } else {
                 output.stdout.trim().to_string()
@@ -463,8 +456,6 @@ exit 0"#,
         })
     }
 
-    /// Writes a config file, validates it with the server's own test command and
-    /// automatically restores the backup when validation fails.
     pub async fn config_write(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -580,9 +571,6 @@ exit 0"#,
     }
 }
 
-/// Rejects symlinks that escape the service config root. `find` deliberately
-/// includes symlinks (nginx `sites-enabled` is usually a symlink farm), so a
-/// lexical prefix check alone is not enough.
 async fn assert_canonical(
     pools: &PoolManager,
     profile: &ConnectionProfile,

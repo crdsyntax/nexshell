@@ -348,10 +348,6 @@ fn parse_config(stdout: &str, stderr: &str) -> SshConfig {
             config.kbd_interactive_authentication = value.trim().to_string();
         } else if let Some(value) = trimmed.strip_prefix("permitrootlogin ") {
             config.permit_root_login = value.trim().to_string();
-        } else if trimmed == "__DROPIN__" {
-            // marker, value follows
-        } else if trimmed == "__TEST__" {
-            // marker, test output follows
         }
     }
 

@@ -338,7 +338,6 @@ fn audit_timestamp(line: &str) -> String {
     };
     let stamp = rest[..end].trim();
     if stamp.contains('/') {
-        // ausearch -i: "10/16/2026 18:17:55.123:4567"
         return stamp
             .rsplit_once(':')
             .map(|(value, _)| value)

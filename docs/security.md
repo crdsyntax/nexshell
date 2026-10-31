@@ -23,6 +23,7 @@
 | Salida remota gigante | Comando malicioso en `exec` | Límite de 4 MiB y timeout |
 | Muerte de un proceso crítico | Acción sobre PID 1 o proceso ajeno | Rechazo de PID <= 1, confirmación y permisos del usuario |
 | Borrado accidental de archivos | Acción desde el listado de archivos grandes | Confirmación explícita, rechazo de rutas virtuales y `rm` sin expansión glob |
+| Fuga de topología remota | Consulta de titularidad de IP a terceros | Solo se envía la IP remota por HTTPS, al abrir el detalle de una conexión; nunca credenciales ni nombres de perfil |
 
 ## 3. Decisiones implementadas
 
@@ -49,6 +50,23 @@
 - Rutas y argumentos pasan por `shell_quote` (comillas simples con escape).
 - El contenido de configuración viaja en base64 para evitar interpretación por shell.
 - `elevated` aplica `sudo -n` a cada binario, no a un script completo.
+
+### Consultas externas
+
+- IP local/WAN: `api.ipify.org`, `ifconfig.me` e `icanhazip.com`; solo con un clic o al
+  refrescar la barra de estado.
+- Titularidad de una IP remota: `ipwho.is` (ASN/geo), `ipinfo.io` (reverse DNS) y
+  `rdap.org` (registro y contacto de abuso). Se ejecuta al abrir el detalle de tráfico;
+  las IP privadas, loopback y link-local se excluyen.
+- Todas las consultas usan HTTPS, timeout de 7 s, se tolera el fallo parcial de un
+  proveedor y no incluyen secretos, usuario ni nombre del perfil.
+- Diagnóstico de conexión: se ejecuta al abrir la pestaña Diagnóstico o al pulsar
+  Reanalizar. Lee `ss`, `ps`, `/proc/<pid>`
+  (cwd, exe, FDs y variables de entorno: valores redactados, o solo esquema/host/puerto
+  cuando son URLs), `getent`,
+  `lsof` y busca el IP/host/puerto en el directorio del proceso, mostrando solo
+  `archivo:línea`. El sondeo TLS con `openssl s_client` es otra acción manual y solo
+  envía un ClientHello al extremo remoto.
 
 ### Configuración
 

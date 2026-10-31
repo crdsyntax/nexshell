@@ -212,6 +212,9 @@ export interface NetworkConnection {
   remote: string
   process: string
   pid: number | null
+  bytesSent: number
+  bytesReceived: number
+  rtt: string
 }
 
 export interface NetworkReport {
@@ -221,6 +224,38 @@ export interface NetworkReport {
   connections: NetworkConnection[]
   listeningSummary: string[]
   stats: string[]
+}
+
+export interface InspectionSection {
+  title: string
+  lines: string[]
+}
+
+export interface ConnectionInspection {
+  pid: number
+  remote: string
+  generatedAt: number
+  sections: InspectionSection[]
+}
+
+export interface IpOwner {
+  ip: string
+  type: string
+  asn: string
+  organization: string
+  isp: string
+  domain: string
+  country: string
+  countryCode: string
+  region: string
+  city: string
+  timezone: string
+  hostname: string
+  network: string
+  range: string
+  abuse: string
+  source: string
+  fetchedAt: number
 }
 
 export interface SudoGroup {
@@ -299,6 +334,16 @@ export interface SessionEntry {
   end: string
   duration: string
   current: boolean
+}
+
+export interface AuthAttempt {
+  timestamp: string
+  user: string
+  from: string
+  method: string
+  status: 'success' | 'failed'
+  kind: string
+  detail: string
 }
 
 export interface ArtifactEntry {

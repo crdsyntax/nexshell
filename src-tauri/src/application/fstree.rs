@@ -89,7 +89,6 @@ impl FileTreeManager {
             });
         }
 
-        // Directories first, then links, then files; case-insensitive by name.
         entries.sort_by(|a, b| {
             rank(&a.kind)
                 .cmp(&rank(&b.kind))
@@ -103,7 +102,6 @@ impl FileTreeManager {
         })
     }
 
-    /// Picks the first available editor on the host: $EDITOR, vim, nano, vi.
     pub async fn editor(pools: &PoolManager, profile: &ConnectionProfile) -> AppResult<String> {
         let script = r####"export LC_ALL=C 2>/dev/null
 for c in "$EDITOR" vim nano vi; do

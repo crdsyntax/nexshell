@@ -13,10 +13,6 @@ interface TerminalViewProps {
   tab: WorkspaceTab
 }
 
-/**
- * Teaches the remote shell to emit OSC 7 on every prompt, so the file tree can
- * follow `cd`. The trailing `clear` hides the injected line from the screen.
- */
 const OSC7_INIT = [
   'if [ -n "$ZSH_VERSION" ]; then',
   `chpwd(){ printf '\\033]7;file://%s%s\\033\\\\' "\${HOST:-localhost}" "$PWD"; };`,
@@ -91,8 +87,8 @@ export function TerminalView({ tab }: TerminalViewProps) {
       try {
         const path = decodeURIComponent(url.slice(slash))
         if (path.startsWith('/')) store().setTerminalCwd(tab.id, path)
-      } catch {
-        // ignore malformed OSC 7 payloads
+      } catch (error) {
+        console.debug('operation failed', error)
       }
       return true
     })
@@ -138,13 +134,10 @@ export function TerminalView({ tab }: TerminalViewProps) {
         sessionRef.current = info.sessionId
         attachTerminal(info.sessionId, (bytes) => term.write(bytes))
         store().setTabSession(tab.id, info)
-        // Teach the remote shell to report its cwd via OSC 7.
         void terminalService.write(info.sessionId, OSC7_INIT).catch(() => undefined)
         term.focus()
       } catch (error) {
         if (cancelled) return
-        // The pool already retries transient failures according to the
-        // profile. Auth/validation failures must not be retried from the UI.
         store().setTabStatus(tab.id, 'error', String(error))
       }
     }
@@ -164,8 +157,8 @@ export function TerminalView({ tab }: TerminalViewProps) {
         if (!element || element.clientWidth < 60 || element.clientHeight < 40) return
         try {
           fit.fit()
-        } catch {
-          // container was hidden during layout; the next resize retries
+        } catch (error) {
+          console.debug('resize skipped', error)
         }
       })
     })
@@ -192,8 +185,6 @@ export function TerminalView({ tab }: TerminalViewProps) {
       termRef.current = null
       fitRef.current = null
     }
-    // The terminal is bound to the tab identity, not to its status updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.id, tab.profileId, tab.processPid, tab.directory])
 
   useEffect(() => {

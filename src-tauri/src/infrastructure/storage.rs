@@ -27,10 +27,6 @@ struct LegacyStoredProfile {
     secret_blob: Option<String>,
 }
 
-/// SQLite-backed persistence for profiles, pinned host keys and execution logs.
-///
-/// Secrets never enter the `profiles.config_json` column: `ProfileService`
-/// encrypts them and passes the opaque `secret_blob` separately.
 pub struct Storage {
     path: PathBuf,
     conn: Mutex<Connection>,

@@ -567,7 +567,6 @@ impl SecurityManager {
                 ));
             }
             Some(WebVerdict::Current | WebVerdict::SourceCurrent) => passed += 1,
-            // Pending package updates are reported by the security-updates check.
             Some(WebVerdict::PendingUpdate) | None => {}
         }
 
@@ -815,23 +814,15 @@ fn key_values(lines: &[String]) -> HashMap<String, String> {
 
 #[derive(Debug, PartialEq, Eq)]
 enum WebVerdict {
-    /// Package-managed nginx, no pending updates: backports make the upstream
-    /// version irrelevant.
     Current,
-    /// Package-managed nginx with a newer release available.
     PendingUpdate,
-    /// Package updated but the binary in PATH still reports an older minor.
     BinaryBehindPackage((u32, u32), (u32, u32)),
-    /// Source build below 1.24 with no distribution backports.
     OutdatedSource(u32, u32),
-    /// Source build at 1.24 or newer.
     SourceCurrent,
 }
 
 fn web_verdict(text: &str) -> Option<WebVerdict> {
     let binary = nginx_version(text)?;
-    // Distributions split nginx into several packages (nginx, nginx-core, ...);
-    // keep the highest one so an upgrade in progress cannot hide behind a meta package.
     let installed = text
         .lines()
         .filter_map(|line| line.trim().strip_prefix("package="))
@@ -858,7 +849,6 @@ fn field_value(text: &str, key: &str) -> Option<String> {
     })
 }
 
-/// Turns `1.20.1-16.el9` or `1.28.0-1.el9.nginx` into `(1, 20)` / `(1, 28)`.
 fn package_version(raw: &str) -> Option<(u32, u32)> {
     let version = raw.split('-').next()?.trim();
     let mut parts = version.split('.');

@@ -105,10 +105,6 @@ export async function deleteProfile(profile: Profile): Promise<void> {
   }
 }
 
-/**
- * Opens a terminal tab and injects a command once the SSH session is ready.
- * Used by the monitor's terminal injection panel.
- */
 export function openTerminalWithCommand(profile: Profile, command: string): void {
   const tabId = useAppStore.getState().openTerminalTab(profile)
   const deadline = Date.now() + 15_000
@@ -118,7 +114,6 @@ export function openTerminalWithCommand(profile: Profile, command: string): void
     if (!tab) return
     if (tab.sessionId) {
       const sessionId = tab.sessionId
-      // Give the remote shell time to print its prompt before typing.
       window.setTimeout(() => {
         void terminalService.write(sessionId, `${command}\n`)
       }, 700)

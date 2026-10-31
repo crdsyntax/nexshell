@@ -48,9 +48,6 @@ impl Default for PoolSettings {
     }
 }
 
-/// A remote host profile. Secret fields are populated only while the profile is
-/// in memory (between decryption and use) and are marked `skip_serializing`, so
-/// they can never leak through a Tauri event or command response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProfile {
@@ -74,8 +71,6 @@ pub struct ConnectionProfile {
     pub passphrase: Option<String>,
     #[serde(default)]
     pub key_path: Option<String>,
-    /// UI intent flags (never persisted): remove a stored inline key when the
-    /// user switches to a key file, or remove the path when pasting a key.
     #[serde(default, skip_serializing)]
     pub clear_private_key: bool,
     #[serde(default, skip_serializing)]
@@ -94,7 +89,6 @@ pub struct ConnectionProfile {
     pub keepalive_secs: u64,
     #[serde(default = "default_connect_timeout")]
     pub connect_timeout_secs: u64,
-    /// Prefix privileged service commands with `sudo -n` (passwordless sudo).
     #[serde(default)]
     pub elevated: bool,
     #[serde(default)]
@@ -285,9 +279,18 @@ pub struct SecurityFinding {
     pub detail: String,
     pub evidence: String,
     pub remediation: String,
-    /// True when 2Shell can apply a validated, reversible fix for this finding.
     #[serde(default)]
     pub fixable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertEvent {
+    pub profile: String,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -300,6 +303,18 @@ pub struct SessionEntry {
     pub end: String,
     pub duration: String,
     pub current: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthAttempt {
+    pub timestamp: String,
+    pub user: String,
+    pub from: String,
+    pub method: String,
+    pub status: String,
+    pub kind: String,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -405,6 +420,9 @@ pub struct NetworkConnection {
     pub remote: String,
     pub process: String,
     pub pid: Option<u32>,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub rtt: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -416,6 +434,22 @@ pub struct NetworkReport {
     pub connections: Vec<NetworkConnection>,
     pub listening_summary: Vec<String>,
     pub stats: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectionSection {
+    pub title: String,
+    pub lines: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionInspection {
+    pub pid: u32,
+    pub remote: String,
+    pub generated_at: i64,
+    pub sections: Vec<InspectionSection>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -1,0 +1,1 @@
+export { ServiceChip } from './ServiceChip'

@@ -2,7 +2,9 @@ use crate::application::filesystem::human_size;
 use crate::application::pool::PoolManager;
 use crate::application::services::shell_quote;
 use crate::error::{AppError, AppResult};
-use crate::models::{ArtifactEntry, ConnectionProfile, SearchHit, SecretHit, SessionEntry};
+use crate::models::{
+    ArtifactEntry, AuthAttempt, ConnectionProfile, SearchHit, SecretHit, SessionEntry,
+};
 use chrono::Utc;
 use std::time::Duration;
 
@@ -15,7 +17,6 @@ const SECRET_LIMIT: usize = 200;
 pub struct ForensicsManager;
 
 impl ForensicsManager {
-    /// SSH login history with source IP, start/end and duration.
     pub async fn sessions(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -37,7 +38,37 @@ impl ForensicsManager {
         Ok(sessions)
     }
 
-    /// Top-level entries of a directory with birth/change timestamps and a rough tag.
+    pub async fn auth_attempts(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        limit: Option<u32>,
+    ) -> AppResult<Vec<AuthAttempt>> {
+        let max = limit.unwrap_or(300).clamp(20, 1000);
+        let script = format!(
+            r####"export LC_ALL=C 2>/dev/null
+found=0
+for f in /var/log/auth.log /var/log/auth.log.1 /var/log/secure /var/log/secure-*; do
+  [ -f "$f" ] || continue
+  found=1
+  grep -hE 'sshd.*(Accepted|Failed|Invalid user|maximum authentication attempts)' "$f" 2>/dev/null
+done | tail -n {max}
+if [ "$found" = 0 ]; then
+  journalctl -u ssh -u sshd --no-pager -n {max} 2>/dev/null \
+    | grep -E 'sshd.*(Accepted|Failed|Invalid user|maximum authentication attempts)'
+fi
+exit 0
+"####,
+            max = max
+        );
+        let output = pools
+            .execute_with_category(&profile.id, &as_root(profile, &script), TIMEOUT, "security")
+            .await?;
+        let mut attempts: Vec<AuthAttempt> =
+            output.stdout.lines().filter_map(parse_auth_line).collect();
+        attempts.reverse();
+        Ok(attempts)
+    }
+
     pub async fn artifacts(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -98,7 +129,6 @@ exit 0
         Ok(artifacts)
     }
 
-    /// Literal recursive search (grep -F) with bounded output.
     pub async fn search(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -131,7 +161,6 @@ exit 0
         Ok(parse_hits(&output.stdout))
     }
 
-    /// Files containing credential-like patterns. Values are never returned.
     pub async fn secrets(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -185,7 +214,6 @@ fn parse_session(line: &str) -> Option<SessionEntry> {
     }
     let user = fields[0].to_string();
 
-    // `last -aF` puts the source host at the very end, after the duration.
     if user == "reboot" {
         return Some(SessionEntry {
             user,
@@ -238,6 +266,126 @@ fn parse_session(line: &str) -> Option<SessionEntry> {
         duration,
         current,
     })
+}
+
+fn parse_auth_line(line: &str) -> Option<AuthAttempt> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let timestamp = trimmed
+        .split_whitespace()
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let message = trimmed
+        .split("sshd")
+        .nth(1)
+        .and_then(|rest| rest.split_once(": ").map(|(_, value)| value))
+        .unwrap_or(trimmed)
+        .trim();
+
+    let tokens: Vec<&str> = message.split_whitespace().collect();
+    if tokens.is_empty() {
+        return None;
+    }
+
+    if tokens[0] == "Accepted" {
+        let method = tokens.get(1).copied().unwrap_or("unknown").to_string();
+        let from_index = tokens.iter().position(|token| *token == "from")?;
+        let user = tokens.get(from_index.checked_sub(1)?)?.to_string();
+        let from = tokens
+            .get(from_index + 1)
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        return Some(AuthAttempt {
+            timestamp,
+            user,
+            from,
+            method,
+            status: "success".to_string(),
+            kind: "accepted".to_string(),
+            detail: truncate(message, 240),
+        });
+    }
+
+    if tokens[0] == "Failed" {
+        let method = tokens.get(1).copied().unwrap_or("unknown").to_string();
+        let from_index = tokens.iter().position(|token| *token == "from")?;
+        let user = tokens
+            .get(from_index.checked_sub(1)?)
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        let invalid = message.contains("invalid user");
+        let from = tokens
+            .get(from_index + 1)
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        return Some(AuthAttempt {
+            timestamp,
+            user,
+            from,
+            method,
+            status: "failed".to_string(),
+            kind: if invalid {
+                "invalid-user".to_string()
+            } else {
+                "bad-password".to_string()
+            },
+            detail: truncate(message, 240),
+        });
+    }
+
+    if tokens[0] == "Invalid" && tokens.get(1) == Some(&"user") {
+        let user = tokens.get(2).copied().unwrap_or("").to_string();
+        let from = tokens
+            .iter()
+            .position(|token| *token == "from")
+            .and_then(|index| tokens.get(index + 1))
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        return Some(AuthAttempt {
+            timestamp,
+            user,
+            from,
+            method: String::new(),
+            status: "failed".to_string(),
+            kind: "invalid-user".to_string(),
+            detail: truncate(message, 240),
+        });
+    }
+
+    if message.contains("maximum authentication attempts exceeded") {
+        let from = tokens
+            .iter()
+            .position(|token| *token == "from")
+            .and_then(|index| tokens.get(index + 1))
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        let user = tokens
+            .iter()
+            .position(|token| *token == "for")
+            .and_then(|index| tokens.get(index + 1))
+            .copied()
+            .unwrap_or("")
+            .to_string();
+        return Some(AuthAttempt {
+            timestamp,
+            user,
+            from,
+            method: String::new(),
+            status: "failed".to_string(),
+            kind: "max-attempts".to_string(),
+            detail: truncate(message, 240),
+        });
+    }
+
+    None
 }
 
 fn parse_hits(output: &str) -> Vec<SearchHit> {
@@ -395,6 +543,35 @@ mod tests {
         assert_eq!(hits[0].path, "/root/a.txt");
         assert_eq!(hits[0].line, 12);
         assert_eq!(hits[1].text, "curl http://x");
+    }
+
+    #[test]
+    fn parses_ssh_auth_attempts() {
+        let ok = parse_auth_line(
+            "Oct 30 17:25:01 host sshd[123]: Accepted publickey for root from 1.2.3.4 port 5555 ssh2: RSA SHA256:x",
+        )
+        .unwrap();
+        assert_eq!(ok.status, "success");
+        assert_eq!(ok.user, "root");
+        assert_eq!(ok.from, "1.2.3.4");
+        assert_eq!(ok.method, "publickey");
+
+        let bad = parse_auth_line(
+            "Oct 30 17:25:01 host sshd[124]: Failed password for invalid user elk from 5.6.7.8 port 4444 ssh2",
+        )
+        .unwrap();
+        assert_eq!(bad.status, "failed");
+        assert_eq!(bad.user, "elk");
+        assert_eq!(bad.from, "5.6.7.8");
+        assert_eq!(bad.kind, "invalid-user");
+
+        let invalid = parse_auth_line(
+            "Oct 30 17:25:01 host sshd[125]: Invalid user oracle from 9.9.9.9 port 2222",
+        )
+        .unwrap();
+        assert_eq!(invalid.status, "failed");
+        assert_eq!(invalid.user, "oracle");
+        assert_eq!(invalid.from, "9.9.9.9");
     }
 
     #[test]

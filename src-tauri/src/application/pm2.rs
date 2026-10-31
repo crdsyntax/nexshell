@@ -8,7 +8,6 @@ use std::time::Duration;
 const PM2_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_LOG_BYTES: usize = 60_000;
 
-/// Resolves the pm2 binary for the SSH user (global install, nvm or /usr/local).
 const PM2_PRELUDE: &str = r####"PM2=$(command -v pm2 2>/dev/null || true)
 if [ -z "$PM2" ]; then
   for candidate in /usr/local/bin/pm2 /usr/bin/pm2 /root/.local/bin/pm2 /root/.nvm/versions/node/*/bin/pm2 /home/*/.nvm/versions/node/*/bin/pm2; do
@@ -123,8 +122,6 @@ echo "__DONE__"
         Ok(truncate(combined, 4000))
     }
 
-    /// Reads the tail of the pm2 out/err logs. Log paths come from `pm2 jlist`, never
-    /// from the caller, and must live under a `.pm2/logs` directory.
     pub async fn logs(
         pools: &PoolManager,
         profile: &ConnectionProfile,
@@ -276,9 +273,6 @@ fn pm2_binary(raw: &str) -> String {
         .unwrap_or_default()
 }
 
-/// PM2 allows custom `out_file` / `error_file` paths, so the check cannot require the
-/// default `.pm2/logs` directory. It does require an absolute `.log` path with no
-/// traversal and refuses system directories plus symlinks (checked remotely).
 fn validate_log_path(path: &str) -> AppResult<()> {
     let trimmed = path.trim();
     if !trimmed.starts_with('/') || trimmed.contains("..") || trimmed.chars().any(char::is_control)

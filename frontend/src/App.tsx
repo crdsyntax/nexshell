@@ -16,6 +16,7 @@ import { Toasts } from '@/components/Toasts'
 import { useAppStore } from '@/store/useAppStore'
 import { refreshProfiles } from '@/lib/actions'
 import { profileService } from '@/services/profile.service'
+import { fetchPublicIp } from '@/lib/netinfo'
 import { pushTerminalData } from '@/lib/terminalBus'
 import type { MetricsSnapshot, Profile } from '@/types'
 
@@ -40,6 +41,14 @@ interface MetricsErrorEvent {
   error: string
 }
 
+interface AlertEvent {
+  profile: string
+  kind: string
+  title: string
+  body: string
+  timestamp: number
+}
+
 export default function App() {
   const profiles = useAppStore((state) => state.profiles)
   const profilesLoaded = useAppStore((state) => state.profilesLoaded)
@@ -49,6 +58,8 @@ export default function App() {
   const poolStats = useAppStore((state) => state.poolStats)
   const servers = useAppStore((state) => state.servers)
   const [modalOpen, setModalOpen] = useState(false)
+  const [localIp, setLocalIp] = useState<string | null>(null)
+  const [publicIp, setPublicIp] = useState<string | null>(null)
   const [editing, setEditing] = useState<Profile | null>(null)
   const listenersReady = useRef(false)
 
@@ -59,6 +70,24 @@ export default function App() {
     refreshProfiles().catch((error) => {
       useAppStore.getState().pushToast('error', String(error))
     })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void profileService
+      .localIp()
+      .then((value) => {
+        if (!cancelled) setLocalIp(value)
+      })
+      .catch(() => undefined)
+    void fetchPublicIp()
+      .then((value) => {
+        if (!cancelled) setPublicIp(value)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -93,6 +122,11 @@ export default function App() {
 
     void listen<MetricsErrorEvent>('metrics:error', (event) => {
       useAppStore.getState().setMetricsError(event.payload.profileId, event.payload.error)
+    }).then((unlisten) => unlisteners.push(unlisten))
+
+    void listen<AlertEvent>('alert:new', (event) => {
+      const { profile, title, body } = event.payload
+      useAppStore.getState().pushToast('info', `${profile} · ${title}: ${body}`)
     }).then((unlisten) => unlisteners.push(unlisten))
 
     return () => {
@@ -203,6 +237,32 @@ export default function App() {
             )}
           </div>
           <div className="status-bar__right">
+            <span
+              className="status-ip"
+              title={localIp ? `IP local: ${localIp} (clic para copiar)` : 'IP local desconocida'}
+              onClick={() => {
+                if (localIp) {
+                  void navigator.clipboard.writeText(localIp)
+                  useAppStore.getState().pushToast('success', `IP local copiada: ${localIp}`)
+                }
+              }}
+            >
+              LOCAL {localIp ?? '—'}
+            </span>
+            <span className="status-bar__sep" />
+            <span
+              className="status-ip"
+              title={publicIp ? `IP pública: ${publicIp} (clic para copiar)` : 'IP pública no disponible'}
+              onClick={() => {
+                if (publicIp) {
+                  void navigator.clipboard.writeText(publicIp)
+                  useAppStore.getState().pushToast('success', `IP pública copiada: ${publicIp}`)
+                }
+              }}
+            >
+              WAN {publicIp ?? '—'}
+            </span>
+            <span className="status-bar__sep" />
             <span>SSH2</span>
             <span className="status-bar__sep" />
             <span className={`status-rtt ${activeServer && activeServer.latencyMs < 60 ? 'is-good' : ''}`}>

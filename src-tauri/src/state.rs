@@ -14,6 +14,7 @@ pub struct AppState {
     pub profiles: Arc<ProfileService>,
     pub pools: Arc<PoolManager>,
     pub terminals: Arc<TerminalManager>,
+    pub alerts: Arc<crate::application::alerts::AlertsService>,
     pub metrics: Arc<MetricsService>,
 }
 
@@ -34,6 +35,7 @@ impl AppState {
             profiles,
             pools,
             terminals: Arc::new(TerminalManager::new(audit)),
+            alerts: Arc::new(crate::application::alerts::AlertsService::new()),
             metrics: Arc::new(MetricsService::new()),
         }
     }
