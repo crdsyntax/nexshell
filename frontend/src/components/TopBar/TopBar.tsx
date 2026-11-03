@@ -4,6 +4,7 @@ import {
   detectServerFor,
   openAudit,
   openDatabase,
+  openFirewall,
   openMonitor,
   openNetwork,
   openSecurity,
@@ -132,6 +133,9 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
           <>
             <button className={`top-action ${action('network')}`} onClick={() => openNetwork(profile)}>
               <NetworkIcon size={13} /> Network
+            </button>
+            <button className={`top-action ${action('firewall')}`} onClick={() => openFirewall(profile)}>
+              <ShieldIcon size={13} /> Firewall
             </button>
             <button className={`top-action ${action('monitor')}`} onClick={() => openMonitor(profile)}>
               <ActivityIcon size={13} /> Monitor

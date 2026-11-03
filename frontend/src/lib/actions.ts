@@ -1,7 +1,30 @@
 import { profileService } from '@/services/profile.service'
 import { terminalService } from '@/services/terminal.service'
 import { useAppStore } from '@/store/useAppStore'
-import type { Profile } from '@/types'
+import type { DbTarget, Profile } from '@/types'
+
+export function profileNeedsCredentials(profile: Profile): boolean {
+  if (profile.authMethod === 'password') {
+    return !profile.hasPassword
+  }
+  return !profile.hasPrivateKey && !profile.keyPath
+}
+
+export function shareProfile(
+  profile: Profile,
+  database?: DbTarget | null,
+  dbPassword?: string,
+): void {
+  useAppStore.getState().openShareModal({
+    profile,
+    database: database ?? profile.dbTarget ?? null,
+    dbPassword,
+  })
+}
+
+export function importShare(): void {
+  useAppStore.getState().openImportModal()
+}
 
 export async function refreshProfiles(): Promise<void> {
   const profiles = await profileService.list()
@@ -56,6 +79,11 @@ export function openSecurity(): void {
 
 export function openNetwork(profile: Profile): void {
   useAppStore.getState().openNetworkTab(profile)
+  void detectServerFor(profile.id)
+}
+
+export function openFirewall(profile: Profile): void {
+  useAppStore.getState().openSingletonTab(profile, 'firewall')
   void detectServerFor(profile.id)
 }
 

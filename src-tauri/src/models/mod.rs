@@ -48,6 +48,17 @@ impl Default for PoolSettings {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbTarget {
+    pub engine: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    #[serde(default)]
+    pub socket: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProfile {
@@ -91,6 +102,10 @@ pub struct ConnectionProfile {
     pub connect_timeout_secs: u64,
     #[serde(default)]
     pub elevated: bool,
+    #[serde(default)]
+    pub source_share_id: Option<String>,
+    #[serde(default)]
+    pub db_target: Option<DbTarget>,
     #[serde(default)]
     pub created_at: i64,
     #[serde(default)]
@@ -136,6 +151,8 @@ impl Default for ConnectionProfile {
             keepalive_secs: default_keepalive(),
             connect_timeout_secs: default_connect_timeout(),
             elevated: false,
+            source_share_id: None,
+            db_target: None,
             created_at: 0,
             updated_at: 0,
         }
@@ -160,6 +177,8 @@ impl ConnectionProfile {
             keepalive_secs: self.keepalive_secs,
             connect_timeout_secs: self.connect_timeout_secs,
             elevated: self.elevated,
+            source_share_id: self.source_share_id.clone(),
+            db_target: self.db_target.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
             has_password: self
@@ -204,6 +223,8 @@ pub struct ProfileView {
     pub keepalive_secs: u64,
     pub connect_timeout_secs: u64,
     pub elevated: bool,
+    pub source_share_id: Option<String>,
+    pub db_target: Option<DbTarget>,
     pub created_at: i64,
     pub updated_at: i64,
     pub has_password: bool,
@@ -434,6 +455,84 @@ pub struct NetworkReport {
     pub connections: Vec<NetworkConnection>,
     pub listening_summary: Vec<String>,
     pub stats: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirewallRule {
+    pub id: String,
+    pub action: String,
+    pub port: String,
+    pub protocol: String,
+    pub from: String,
+    pub comment: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirewallReport {
+    pub hostname: String,
+    pub os: String,
+    pub package_manager: String,
+    pub backend: String,
+    pub installed: bool,
+    pub active: bool,
+    pub can_manage: bool,
+    pub default_incoming: String,
+    pub default_outgoing: String,
+    pub ssh_ports: Vec<u16>,
+    pub ssh_allowed: Vec<u16>,
+    pub rules: Vec<FirewallRule>,
+    pub warnings: Vec<String>,
+    pub raw: Vec<String>,
+    pub generated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirewallActionResult {
+    pub ok: bool,
+    pub action: String,
+    pub output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fail2banJail {
+    pub name: String,
+    pub enabled: bool,
+    pub currently_failed: u64,
+    pub total_failed: u64,
+    pub currently_banned: u64,
+    pub total_banned: u64,
+    pub banned: Vec<String>,
+    pub maxretry: u64,
+    pub findtime: String,
+    pub bantime: String,
+    pub ignoreip: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fail2banReport {
+    pub hostname: String,
+    pub installed: bool,
+    pub active: bool,
+    pub version: String,
+    pub can_manage: bool,
+    pub jails: Vec<String>,
+    pub sshd: Option<Fail2banJail>,
+    pub warnings: Vec<String>,
+    pub raw: Vec<String>,
+    pub generated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fail2banActionResult {
+    pub ok: bool,
+    pub action: String,
+    pub output: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

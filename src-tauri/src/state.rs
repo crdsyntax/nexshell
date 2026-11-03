@@ -2,6 +2,7 @@ use crate::application::audit::AuditService;
 use crate::application::metrics::MetricsService;
 use crate::application::pool::PoolManager;
 use crate::application::profiles::ProfileService;
+use crate::application::sharing::service::SharingService;
 use crate::application::terminal::TerminalManager;
 use crate::infrastructure::crypto::SecretBox;
 use crate::infrastructure::storage::Storage;
@@ -12,6 +13,7 @@ pub struct AppState {
     pub storage: Arc<Storage>,
     pub audit: Arc<AuditService>,
     pub profiles: Arc<ProfileService>,
+    pub sharing: Arc<SharingService>,
     pub pools: Arc<PoolManager>,
     pub terminals: Arc<TerminalManager>,
     pub alerts: Arc<crate::application::alerts::AlertsService>,
@@ -22,6 +24,11 @@ impl AppState {
     pub fn new(storage: Arc<Storage>, secrets: Arc<SecretBox>) -> Self {
         let audit = Arc::new(AuditService::new(storage.clone()));
         let profiles = Arc::new(ProfileService::new(storage.clone(), secrets));
+        let sharing = Arc::new(SharingService::new(
+            profiles.clone(),
+            storage.clone(),
+            audit.clone(),
+        ));
         let known_hosts = Arc::new(KnownHostsStore::new(storage.clone()));
         let pools = Arc::new(PoolManager::new(
             profiles.clone(),
@@ -33,6 +40,7 @@ impl AppState {
             storage,
             audit: audit.clone(),
             profiles,
+            sharing,
             pools,
             terminals: Arc::new(TerminalManager::new(audit)),
             alerts: Arc::new(crate::application::alerts::AlertsService::new()),

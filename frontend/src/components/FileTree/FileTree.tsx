@@ -8,6 +8,7 @@ import {
   FolderIcon,
   PlusIcon,
   RefreshIcon,
+  SearchIcon,
   TerminalIcon,
   TrashIcon,
   XIcon,
@@ -34,6 +35,13 @@ export function FileTree({ profileId, tabId, onClose }: FileTreeProps) {
     setEditorTarget,
     showHidden,
     setShowHidden,
+    searchName,
+    setSearchName,
+    searchExt,
+    setSearchExt,
+    isFiltering,
+    filteredEntries,
+    clearSearch,
     propertiesTarget,
     setPropertiesTarget,
     properties,
@@ -139,6 +147,37 @@ export function FileTree({ profileId, tabId, onClose }: FileTreeProps) {
         </button>
       </div>
 
+      <div className="file-tree__search">
+        <div className="file-tree__search-field">
+          <SearchIcon size={11} />
+          <input
+            value={searchName}
+            onChange={(event) => setSearchName(event.target.value)}
+            placeholder="Nombre…"
+            aria-label="Buscar por nombre"
+            spellCheck={false}
+          />
+        </div>
+        <input
+          className="file-tree__ext-input"
+          value={searchExt}
+          onChange={(event) => setSearchExt(event.target.value)}
+          placeholder=".ext"
+          aria-label="Filtrar por extensión"
+          spellCheck={false}
+        />
+        {isFiltering && (
+          <button
+            type="button"
+            className="icon-button file-tree__search-clear"
+            onClick={clearSearch}
+            title="Limpiar búsqueda"
+          >
+            <XIcon size={11} />
+          </button>
+        )}
+      </div>
+
       {error && (
         <div className="inline-alert inline-alert--error file-tree__error">
           <AlertIcon size={13} />
@@ -147,18 +186,59 @@ export function FileTree({ profileId, tabId, onClose }: FileTreeProps) {
       )}
 
       <div className="file-tree__body">
-        <button
-          className="ft-row ft-row--root"
-          onClick={collapseAll}
-          title={root}
-        >
-          <span className="ft-chevron is-open">
-            <ChevronRightIcon size={11} />
-          </span>
-          <span className="ft-name">{root.split('/').filter(Boolean).pop() || '/'}</span>
-          <span className="ft-tag">cwd</span>
-        </button>
-        {renderLevel(root, 1)}
+        {isFiltering ? (
+          <>
+            <div className="ft-search-meta">
+              <span>{filteredEntries.length} coincidencias</span>
+            </div>
+            {filteredEntries.map((entry) => {
+              const isDir = entry.kind === 'dir'
+              return (
+                <button
+                  key={entry.path}
+                  className={`ft-row ${selected?.path === entry.path ? 'is-selected' : ''}`}
+                  style={{ paddingLeft: 10 }}
+                  onClick={() => {
+                    setSelected(entry)
+                    if (isDir) void toggle(entry)
+                  }}
+                  onDoubleClick={() => openEntry(entry)}
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    setSelected(entry)
+                    void openProperties(entry)
+                  }}
+                  title={isDir ? entry.path : `${entry.path} · doble clic para editar`}
+                >
+                  <span className={`ft-icon ${isDir ? 'is-dir' : ''}`}>
+                    {isDir ? <FolderIcon size={13} /> : <FileIcon size={13} />}
+                  </span>
+                  <span className="ft-name">{entry.name}</span>
+                  {entry.symlink && <span className="ft-tag">link</span>}
+                  {!isDir && <span className="ft-size">{entry.sizeHuman}</span>}
+                </button>
+              )
+            })}
+            {filteredEntries.length === 0 && (
+              <div className="ft-empty">Sin archivos que coincidan</div>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              className="ft-row ft-row--root"
+              onClick={collapseAll}
+              title={root}
+            >
+              <span className="ft-chevron is-open">
+                <ChevronRightIcon size={11} />
+              </span>
+              <span className="ft-name">{root.split('/').filter(Boolean).pop() || '/'}</span>
+              <span className="ft-tag">cwd</span>
+            </button>
+            {renderLevel(root, 1)}
+          </>
+        )}
       </div>
 
       <footer className="file-tree__footer">

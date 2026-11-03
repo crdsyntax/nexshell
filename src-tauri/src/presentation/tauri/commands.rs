@@ -1,7 +1,9 @@
 use crate::application::audit::AuditEvent;
 use crate::application::cron::CronManager;
-use crate::application::database::DatabaseManager;
+use crate::application::database::{DatabaseManager, DbAuth};
+use crate::application::fail2ban::Fail2banManager;
 use crate::application::filesystem::FilesystemManager;
+use crate::application::firewall::{FirewallManager, FirewallRuleChange};
 use crate::application::forensics::ForensicsManager;
 use crate::application::fstree::FileTreeManager;
 use crate::application::incident::IncidentManager;
@@ -12,6 +14,10 @@ use crate::application::processes::{ProcessManager, ProcessSignal};
 use crate::application::remediation;
 use crate::application::security::SecurityManager;
 use crate::application::services::{ServiceAction, ServiceManager, WebService};
+use crate::application::sharing::report::{
+    ConflictPolicy, ImportReport, ShareExportResult, ShareHeaderView, ShareImportOptions,
+    SharePrepareOptions, SharePrepareResult, SharePreview,
+};
 use crate::application::ssh_access::SshAccessManager;
 use crate::application::sudoers::SudoersManager;
 use crate::application::terminal::TerminalOptions;
@@ -19,12 +25,13 @@ use crate::error::{AppError, AppResult};
 use crate::models::{
     AccountOrigin, ArtifactEntry, AuthAttempt, ConfigContent, ConfigEntry, ConnectionInspection,
     ConnectionProfile, CronBackupSummary, CronDeleteResult, CronReport, DbInfo, DbLoginTest,
-    DbPasswordResult, DbUser, DirListing, ExecOutput, ExecutionLog, FileDeleteResult,
-    FileProperties, IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogFilter,
-    NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats, ProcessDetails, ProcessKillResult,
-    ProcessLocation, ProfileView, SearchHit, SecretHit, SecurityAuditSummary, SecurityFixResult,
-    SecurityReport, ServerInfo, ServiceActionResult, ServiceStatus, SessionEntry, SshActionResult,
-    SshConfig, SshKey, SudoersReport, TerminalInfo, TestResult, WebServiceInfo,
+    DbPasswordResult, DbUser, DirListing, ExecOutput, ExecutionLog, Fail2banActionResult,
+    Fail2banReport, FileDeleteResult, FileProperties, FirewallActionResult, FirewallReport,
+    IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogFilter, NetworkReport, NodeProcess,
+    Pm2Logs, Pm2Report, PoolStats, ProcessDetails, ProcessKillResult, ProcessLocation, ProfileView,
+    SearchHit, SecretHit, SecurityAuditSummary, SecurityFixResult, SecurityReport, ServerInfo,
+    ServiceActionResult, ServiceStatus, SessionEntry, SshActionResult, SshConfig, SshKey,
+    SudoersReport, TerminalInfo, TestResult, WebServiceInfo,
 };
 use crate::state::AppState;
 use std::time::{Duration, Instant};
@@ -500,35 +507,42 @@ pub fn audit_db_path(state: State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
-pub async fn database_info(profile_id: String, state: State<'_, AppState>) -> AppResult<DbInfo> {
+pub async fn database_info(
+    profile_id: String,
+    auth: DbAuth,
+    state: State<'_, AppState>,
+) -> AppResult<DbInfo> {
     let profile = state.profiles.get(&profile_id)?;
-    DatabaseManager::info(&state.pools, &profile).await
+    DatabaseManager::info(&state.pools, &profile, &auth).await
 }
 
 #[tauri::command]
 pub async fn database_users(
     profile_id: String,
+    auth: DbAuth,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<DbUser>> {
     let profile = state.profiles.get(&profile_id)?;
-    DatabaseManager::users(&state.pools, &profile).await
+    DatabaseManager::users(&state.pools, &profile, &auth).await
 }
 
 #[tauri::command]
 pub async fn database_grants(
     profile_id: String,
+    auth: DbAuth,
     user: String,
     host: String,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
     let profile = state.profiles.get(&profile_id)?;
-    DatabaseManager::grants(&state.pools, &profile, &user, &host).await
+    DatabaseManager::grants(&state.pools, &profile, &auth, &user, &host).await
 }
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn database_change_password(
     profile_id: String,
+    auth: DbAuth,
     user: String,
     host: String,
     password: String,
@@ -541,6 +555,7 @@ pub async fn database_change_password(
     let result = DatabaseManager::change_password(
         &state.pools,
         &profile,
+        &auth,
         &user,
         &host,
         &password,
@@ -1005,6 +1020,85 @@ pub async fn network_inspect(
 }
 
 #[tauri::command]
+pub async fn firewall_report(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<FirewallReport> {
+    let profile = state.profiles.get(&profile_id)?;
+    FirewallManager::report(&state.pools, &profile).await
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirewallActionRequest {
+    pub action: String,
+    pub port: Option<String>,
+    pub protocol: Option<String>,
+    pub source: Option<String>,
+    pub rule_id: Option<String>,
+    pub rule_action: Option<String>,
+    pub previous_action: Option<String>,
+    pub previous_port: Option<String>,
+    pub previous_protocol: Option<String>,
+    pub previous_source: Option<String>,
+}
+
+#[tauri::command]
+pub async fn firewall_action(
+    profile_id: String,
+    input: FirewallActionRequest,
+    state: State<'_, AppState>,
+) -> AppResult<FirewallActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    let change = FirewallRuleChange {
+        port: input.port.as_deref(),
+        protocol: input.protocol.as_deref(),
+        source: input.source.as_deref(),
+        rule_id: input.rule_id.as_deref(),
+        rule_action: input.rule_action.as_deref(),
+        previous_action: input.previous_action.as_deref(),
+        previous_port: input.previous_port.as_deref(),
+        previous_protocol: input.previous_protocol.as_deref(),
+        previous_source: input.previous_source.as_deref(),
+    };
+    FirewallManager::action(&state.pools, &profile, &input.action, change).await
+}
+
+#[tauri::command]
+pub async fn fail2ban_report(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Fail2banReport> {
+    let profile = state.profiles.get(&profile_id)?;
+    Fail2banManager::report(&state.pools, &profile).await
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fail2banActionRequest {
+    pub action: String,
+    pub ip: Option<String>,
+    pub ignore_ip: Option<String>,
+}
+
+#[tauri::command]
+pub async fn fail2ban_action(
+    profile_id: String,
+    input: Fail2banActionRequest,
+    state: State<'_, AppState>,
+) -> AppResult<Fail2banActionResult> {
+    let profile = state.profiles.get(&profile_id)?;
+    Fail2banManager::action(
+        &state.pools,
+        &profile,
+        &input.action,
+        input.ip.as_deref(),
+        input.ignore_ip.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn sudoers_report(
     profile_id: String,
     state: State<'_, AppState>,
@@ -1256,4 +1350,63 @@ pub fn local_ip() -> AppResult<String> {
         crate::error::AppError::Validation(format!("cannot read local address: {error}"))
     })?;
     Ok(address.ip().to_string())
+}
+
+#[tauri::command]
+pub fn share_prepare(
+    profile_id: String,
+    options: SharePrepareOptions,
+    db_password: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<SharePrepareResult> {
+    state.sharing.prepare(&profile_id, options, db_password)
+}
+
+#[tauri::command]
+pub fn share_export(
+    destination_path: String,
+    state: State<'_, AppState>,
+) -> AppResult<ShareExportResult> {
+    state.sharing.export(&destination_path)
+}
+
+#[tauri::command]
+pub fn share_cancel(state: State<'_, AppState>) -> AppResult<()> {
+    state.sharing.cancel()
+}
+
+#[tauri::command]
+pub fn share_inspect(path: String, state: State<'_, AppState>) -> AppResult<ShareHeaderView> {
+    state.sharing.inspect(&path)
+}
+
+#[tauri::command]
+pub fn share_unlock(
+    path: String,
+    passphrase: String,
+    state: State<'_, AppState>,
+) -> AppResult<SharePreview> {
+    state.sharing.unlock(&path, &passphrase)
+}
+
+#[tauri::command]
+pub async fn share_import(
+    selection: Vec<String>,
+    policy: ConflictPolicy,
+    options: ShareImportOptions,
+    state: State<'_, AppState>,
+) -> AppResult<ImportReport> {
+    let report = state.sharing.import(selection, policy, options)?;
+    for item in &report.imported {
+        if item.action == "updated" {
+            state.metrics.stop(&item.profile_id).await;
+            state.pools.invalidate(&item.profile_id).await;
+        }
+    }
+    Ok(report)
+}
+
+#[tauri::command]
+pub fn share_discard(state: State<'_, AppState>) -> AppResult<()> {
+    state.sharing.discard()
 }

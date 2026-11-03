@@ -5,6 +5,7 @@ import { processService } from '@/services/process.service'
 import { pm2Service } from '@/services/pm2.service'
 import { openProcessTerminal, openTerminalWithCommand } from '@/lib/actions'
 import { LargeFilesModal } from '@/components/LargeFilesModal'
+import { LogViewer } from '@/components/LogViewer'
 import {
   ActivityIcon,
   AlertIcon,
@@ -1106,13 +1107,14 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
                   <span>{pm2Result}</span>
                 </div>
               )}
-              <pre className="pm2-log-pre">
-                {logsLoading
-                  ? 'reading logs…'
-                  : logsTab === 'stdout'
-                    ? logs?.stdout || '(empty)'
-                    : logs?.stderr || '(empty)'}
-              </pre>
+              {logsLoading ? (
+                <pre className="pm2-log-pre">reading logs…</pre>
+              ) : (
+                <LogViewer
+                  text={logsTab === 'stdout' ? logs?.stdout ?? '' : logs?.stderr ?? ''}
+                  empty="(empty)"
+                />
+              )}
             </div>
             <footer className="modal__footer">
               <span className="field-hint">

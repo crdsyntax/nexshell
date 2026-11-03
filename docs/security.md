@@ -24,6 +24,8 @@
 | Muerte de un proceso crítico | Acción sobre PID 1 o proceso ajeno | Rechazo de PID <= 1, confirmación y permisos del usuario |
 | Borrado accidental de archivos | Acción desde el listado de archivos grandes | Confirmación explícita, rechazo de rutas virtuales y `rm` sin expansión glob |
 | Fuga de topología remota | Consulta de titularidad de IP a terceros | Solo se envía la IP remota por HTTPS, al abrir el detalle de una conexión; nunca credenciales ni nombres de perfil |
+| Bloqueo accidental de SSH | Activar un firewall sin permitir el puerto de administración | Se insertan las reglas SSH (22, puerto del perfil y puertos de sshd) antes de habilitar; el backend rechaza `deny` sobre esos puertos y se pide confirmación |
+| Intento de conexión a la base de datos sin credenciales | Abrir el panel o refrescar sin contraseña | El panel muestra un formulario y no lanza ningún comando hasta que se envía una contraseña; el backend también rechaza credenciales vacías antes de ejecutar el cliente |
 
 ## 3. Decisiones implementadas
 
@@ -67,6 +69,44 @@
   `lsof` y busca el IP/host/puerto en el directorio del proceso, mostrando solo
   `archivo:línea`. El sondeo TLS con `openssl s_client` es otra acción manual y solo
   envía un ClientHello al extremo remoto.
+
+### Fail2ban
+
+- Instalación y configuración solo con perfil `root` o `elevated`.
+- El jail `sshd` se escribe en `/etc/fail2ban/jail.d/00-2shell.local`; el archivo
+  anterior se copia a `/var/backups/2shell/fail2ban`.
+- `ignoreip` incluye loopback por defecto y se valida cada IP/CIDR antes de escribir.
+- Ban/unban se ejecuta con `fail2ban-client set sshd banip|unbanip` sobre una IP
+  validada.
+- La vista muestra fallos y baneos, pero nunca la contraseña ni el contenido de los
+  intentos.
+
+### Base de datos
+
+- La contraseña de administración de MariaDB/MySQL solo existe en el estado del panel,
+  en memoria; no va al store, a SQLite ni al portapapeles.
+- Sin contraseña no se ejecuta `database_info`, `database_users` ni `database_grants`:
+  el formulario inicial no dispara IPC.
+- Las consultas usan `MYSQL_PWD` y `execute_sensitive`, por lo que el comando y la clave
+  no se escriben en el audit log.
+- `localhost` usa el socket; `127.0.0.1` fuerza TCP. El panel se puede desconectar y
+  limpia la contraseña de la memoria.
+
+### Firewall
+
+- Solo se administra con un perfil `root` o `elevated` (`sudo -n`); la UI deshabilita
+  las acciones si no hay privilegios.
+- Antes de activar UFW o firewalld se permiten TCP en 22, en el puerto del perfil y en
+  los puertos de `sshd -T`; después se aplica `deny incoming` / `allow outgoing`.
+- El backend rechaza cualquier regla `deny` sobre los puertos SSH.
+- Las reglas se validan: puerto 1–65535, protocolo tcp/udp/any y origen `any`,
+  IPv4/IPv6 o CIDR.
+- Al editar el origen de una regla UFW se añade primero la nueva y después se elimina
+  la anterior; si SSH deja de estar permitido, UFW se desactiva y se devuelve error.
+- «Mi IP» consulta la IP pública del equipo por HTTPS (`api64`/`api6.ipify` o
+  `ipv6.icanhazip`) y solo rellena el origen; no cambia nada por sí sola.
+- Backups del estado previo en `/var/backups/2shell/firewall`.
+- Las reglas rich de firewalld se muestran como solo lectura.
 
 ### Configuración
 

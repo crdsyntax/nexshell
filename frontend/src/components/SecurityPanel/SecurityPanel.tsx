@@ -13,12 +13,20 @@ import { ForensicsView } from './views/ForensicsView'
 import { SudoersView } from './views/SudoersView'
 import { IncidentView } from './views/IncidentView'
 import { SshAccessView } from './views/SshAccessView'
+import { Fail2banView } from './views/Fail2banView'
 
 interface SecurityPanelProps {
   profileId: string
 }
 
-type SecurityView = 'audit' | 'cron' | 'incident' | 'forensics' | 'sudoers' | 'ssh'
+type SecurityView =
+  | 'audit'
+  | 'cron'
+  | 'incident'
+  | 'forensics'
+  | 'sudoers'
+  | 'ssh'
+  | 'fail2ban'
 
 const SEC_TITLES: Record<SecurityView, string> = {
   audit: 'Security & hardening audit',
@@ -27,6 +35,7 @@ const SEC_TITLES: Record<SecurityView, string> = {
   forensics: 'Forensics & access trail',
   sudoers: 'Sudoers & privileged access audit',
   ssh: 'SSH access & key management',
+  fail2ban: 'Fail2ban & SSH brute-force protection',
 }
 
 const SEC_SUBTITLES: Record<SecurityView, string> = {
@@ -36,6 +45,7 @@ const SEC_SUBTITLES: Record<SecurityView, string> = {
   forensics: 'Login history, root artifacts, recursive searches and credential exposure.',
   sudoers: 'Automated compliance parsing, escalation surfaces, scheduled root timers, and authorization ledger.',
   ssh: 'Authorized keys, effective sshd policy and key-only access controls.',
+  fail2ban: 'SSH jail, banned addresses, retry thresholds and ignored networks.',
 }
 
 export function SecurityPanel({ profileId }: SecurityPanelProps) {
@@ -77,6 +87,12 @@ export function SecurityPanel({ profileId }: SecurityPanelProps) {
             <button className={view === 'ssh' ? 'is-active' : ''} onClick={() => setView('ssh')}>
               <KeyIcon size={12} /> SSH keys
             </button>
+            <button
+              className={view === 'fail2ban' ? 'is-active' : ''}
+              onClick={() => setView('fail2ban')}
+            >
+              <ShieldIcon size={12} /> Fail2ban
+            </button>
           </div>
         </div>
       </div>
@@ -87,6 +103,7 @@ export function SecurityPanel({ profileId }: SecurityPanelProps) {
       {view === 'forensics' && <ForensicsView profileId={profileId} />}
       {view === 'sudoers' && <SudoersView profileId={profileId} />}
       {view === 'ssh' && <SshAccessView profileId={profileId} />}
+      {view === 'fail2ban' && <Fail2banView profileId={profileId} />}
     </div>
   )
 }

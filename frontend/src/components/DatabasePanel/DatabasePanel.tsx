@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { databaseService } from '@/services/database.service'
+import { shareProfile } from '@/lib/actions'
 import {
   AlertIcon,
   CheckIcon,
@@ -10,10 +11,11 @@ import {
   KeyIcon,
   RefreshIcon,
   SearchIcon,
+  ShareIcon,
   ShieldIcon,
   XIcon,
 } from '@/components/Icons'
-import type { DbInfo, DbPasswordResult, DbUser } from '@/types'
+import type { DbAuth, DbInfo, DbPasswordResult, DbUser } from '@/types'
 
 interface DatabasePanelProps {
   profileId: string
@@ -36,9 +38,17 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
 
   const [info, setInfo] = useState<DbInfo | null>(null)
   const [users, setUsers] = useState<DbUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+
+  const [connected, setConnected] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [authUser, setAuthUser] = useState(profile?.dbTarget?.user ?? 'root')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authHost, setAuthHost] = useState(profile?.dbTarget?.host ?? 'localhost')
+  const [authPort, setAuthPort] = useState(String(profile?.dbTarget?.port ?? 3306))
+  const [showAuthPassword, setShowAuthPassword] = useState(false)
 
   const [passwordTarget, setPasswordTarget] = useState<DbUser | null>(null)
   const [password, setPassword] = useState('')
@@ -56,32 +66,108 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
   const [grantsLoading, setGrantsLoading] = useState(false)
   const [grantsError, setGrantsError] = useState<string | null>(null)
 
+  const auth = useCallback(
+    (): DbAuth => ({
+      user: authUser.trim() || 'root',
+      password: authPassword,
+      host: authHost.trim() || 'localhost',
+      port: Number(authPort) || 3306,
+    }),
+    [authUser, authPassword, authHost, authPort],
+  )
+
+  const load = useCallback(
+    async (credentials: DbAuth) => {
+      const dbInfo = await databaseService.info(profileId, credentials)
+      setInfo(dbInfo)
+      if (!dbInfo.canQuery) {
+        setUsers([])
+        setConnected(false)
+        setError(dbInfo.error ?? 'No se pudo autenticar contra MariaDB/MySQL.')
+        return
+      }
+      const dbUsers = await databaseService.users(profileId, credentials)
+      setUsers(dbUsers)
+      setConnected(true)
+      setError(null)
+    },
+    [profileId],
+  )
+
+  useEffect(() => {
+    if (profile?.dbTarget) {
+      setAuthUser(profile.dbTarget.user || 'root')
+      setAuthHost(profile.dbTarget.host || 'localhost')
+      setAuthPort(String(profile.dbTarget.port || 3306))
+    }
+    const ephemeral = useAppStore.getState().consumePendingDbAuth(profileId)
+    if (ephemeral) {
+      setAuthUser(ephemeral.user)
+      setAuthHost(ephemeral.host)
+      setAuthPort(String(ephemeral.port))
+      setAuthPassword(ephemeral.password)
+      setConnecting(true)
+      setError(null)
+      void load({
+        user: ephemeral.user,
+        password: ephemeral.password,
+        host: ephemeral.host,
+        port: ephemeral.port,
+      })
+        .catch((err) => {
+          setConnected(false)
+          setUsers([])
+          setError(String(err))
+        })
+        .finally(() => {
+          setConnecting(false)
+        })
+    }
+  }, [load, profile?.dbTarget, profileId])
+
+  const connect = useCallback(async () => {
+    if (!authPassword) {
+      setError('Introduce la contraseña de la base de datos para conectar.')
+      return
+    }
+    const credentials = auth()
+    setConnecting(true)
+    setError(null)
+    setInfo(null)
+    setUsers([])
+    try {
+      await load(credentials)
+    } catch (err) {
+      setConnected(false)
+      setUsers([])
+      setError(String(err))
+    } finally {
+      setConnecting(false)
+    }
+  }, [auth, authPassword, load])
+
   const refresh = useCallback(async () => {
+    if (!connected) return
     setLoading(true)
     setError(null)
     try {
-      const [dbInfo, dbUsers] = await Promise.all([
-        databaseService.info(profileId),
-        databaseService.users(profileId),
-      ])
-      setInfo(dbInfo)
-      setUsers(dbUsers)
+      await load(auth())
     } catch (err) {
-      const message = String(err)
-      setError(message)
-      try {
-        setInfo(await databaseService.info(profileId))
-      } catch {
-        setInfo(null)
-      }
+      setConnected(false)
+      setUsers([])
+      setError(String(err))
     } finally {
       setLoading(false)
     }
-  }, [profileId])
+  }, [auth, connected, load])
 
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
+  const disconnect = useCallback(() => {
+    setConnected(false)
+    setInfo(null)
+    setUsers([])
+    setError(null)
+    setAuthPassword('')
+  }, [])
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -97,7 +183,7 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
     setShowPassword(true)
     setTestConnection(true)
     setTestHost(defaultTestHost(user.host))
-    setTestPort('3306')
+    setTestPort(authPort || '3306')
     setTestDatabase('')
     setChangeResult(null)
     setChangeError(null)
@@ -120,8 +206,10 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
     setChangeError(null)
     setChangeResult(null)
     try {
+      const credentials = auth()
       const result = await databaseService.changePassword(
         profileId,
+        credentials,
         passwordTarget.user,
         passwordTarget.host,
         password,
@@ -131,6 +219,11 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
       )
       setChangeResult(result)
       if (result.ok) {
+        const sameAccount =
+          passwordTarget.user === credentials.user &&
+          (passwordTarget.host === credentials.host ||
+            (passwordTarget.host === 'localhost' && credentials.host === 'localhost'))
+        if (sameAccount) setAuthPassword(password)
         pushToast('success', `Password changed for ${passwordTarget.user}@${passwordTarget.host}`)
       } else {
         pushToast('error', 'Password change failed')
@@ -145,12 +238,13 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
   }
 
   const openGrants = async (user: DbUser) => {
+    if (!connected) return
     setGrantsTarget(user)
     setGrants(null)
     setGrantsError(null)
     setGrantsLoading(true)
     try {
-      setGrants(await databaseService.grants(profileId, user.user, user.host))
+      setGrants(await databaseService.grants(profileId, auth(), user.user, user.host))
     } catch (err) {
       setGrantsError(String(err))
     } finally {
@@ -171,10 +265,40 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
           </h2>
           <p className="panel__description">
             MariaDB / MySQL users, credentials and grants over the existing SSH session.
+            No queries run until you provide the database password.
           </p>
         </div>
         <div className="panel__actions">
-          <button className="top-action" onClick={() => void refresh()} disabled={loading}>
+          {profile && (
+            <button
+              className="top-action"
+              onClick={() =>
+                shareProfile(
+                  profile,
+                  {
+                    engine:
+                      info?.client.toLowerCase().includes('mysql') &&
+                      !info.client.toLowerCase().includes('mariadb')
+                        ? 'mysql'
+                        : profile.dbTarget?.engine || 'mariadb',
+                    host: authHost.trim() || 'localhost',
+                    port: Number(authPort) || 3306,
+                    user: authUser.trim() || 'root',
+                    socket: info?.socket || profile.dbTarget?.socket || null,
+                  },
+                  connected ? authPassword : undefined,
+                )
+              }
+            >
+              <ShareIcon size={14} />
+              Compartir conexión
+            </button>
+          )}
+          <button
+            className="top-action"
+            onClick={() => void refresh()}
+            disabled={loading || connecting || !connected}
+          >
             <RefreshIcon size={14} className={loading ? 'spin' : ''} />
             {loading ? 'Loading…' : 'Refresh'}
           </button>
@@ -185,6 +309,92 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
         <div className="inline-alert inline-alert--error">
           <AlertIcon size={15} />
           <span>{error}</span>
+        </div>
+      )}
+
+      {!connected && (
+        <section className="db-connect">
+          <header>
+            <h3>
+              <DatabaseIcon size={14} /> Conectar a MariaDB / MySQL
+            </h3>
+            <p>Introduce la contraseña para detectar el motor y listar usuarios.</p>
+          </header>
+          <form
+            className="db-connect__form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void connect()
+            }}
+          >
+            <label className="field">
+              <span>Usuario</span>
+              <input
+                value={authUser}
+                onChange={(event) => setAuthUser(event.target.value)}
+                autoComplete="username"
+                spellCheck={false}
+              />
+            </label>
+            <label className="field">
+              <span>Contraseña</span>
+              <div className="input-with-action db-password-input">
+                <input
+                  type={showAuthPassword ? 'text' : 'password'}
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                  autoComplete="current-password"
+                  spellCheck={false}
+                />
+                <button
+                  className="icon-button"
+                  type="button"
+                  onClick={() => setShowAuthPassword((value) => !value)}
+                  title={showAuthPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showAuthPassword ? <EyeOffIcon size={15} /> : <EyeIcon size={15} />}
+                </button>
+              </div>
+            </label>
+            <label className="field">
+              <span>Host</span>
+              <input
+                value={authHost}
+                onChange={(event) => setAuthHost(event.target.value)}
+                placeholder="localhost"
+                spellCheck={false}
+              />
+            </label>
+            <label className="field">
+              <span>Puerto</span>
+              <input
+                value={authPort}
+                onChange={(event) => setAuthPort(event.target.value.replace(/\D/g, ''))}
+                inputMode="numeric"
+              />
+            </label>
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={connecting || !authPassword}
+            >
+              {connecting ? 'Conectando…' : 'Conectar y detectar'}
+            </button>
+          </form>
+          <p className="field-hint">
+            <code>localhost</code> usa el socket; <code>127.0.0.1</code> fuerza TCP.
+          </p>
+        </section>
+      )}
+
+      {connected && (
+        <div className="db-session">
+          <span className="mono">
+            <CheckIcon size={14} /> {authUser}@{authHost}:{authPort}
+          </span>
+          <button className="ghost-button" onClick={disconnect}>
+            Desconectar
+          </button>
         </div>
       )}
 
@@ -213,18 +423,9 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
         </div>
       )}
 
-      {info && !info.canQuery && (
-        <div className="inline-alert">
-          <AlertIcon size={15} />
-          <span>
-            Cannot query <code>mysql.user</code>. {info.error ?? ''} Use an SSH root
-            profile, or enable elevated mode with passwordless sudo for the MariaDB
-            client.
-          </span>
-        </div>
-      )}
-
-      <div className="db-toolbar">
+      {connected && (
+        <>
+        <div className="db-toolbar">
         <div className="db-search">
           <SearchIcon size={14} />
           <input
@@ -246,8 +447,8 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
           <DatabaseIcon size={22} />
           <strong>No database users returned</strong>
           <p>
-            The client may not be installed, or the SSH user cannot authenticate to
-            MariaDB. Check the error above.
+            La conexión funcionó, pero la consulta a <code>mysql.user</code> no devolvió
+            cuentas.
           </p>
         </div>
       ) : (
@@ -285,6 +486,8 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
 
       {passwordTarget && (

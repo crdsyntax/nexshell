@@ -29,7 +29,7 @@ export function stripAnsi(value: string): string {
 export function classifyLogLine(line: string): LogKind {
   const text = stripAnsi(line)
   if (ERROR_PATTERNS.some((pattern) => pattern.test(text))) return 'error'
-  if (/^\s+at\s/.test(text)) return 'stack'
+  if (/^\s*at\s/.test(text)) return 'stack'
   if (WARN_PATTERNS.some((pattern) => pattern.test(text))) return 'warn'
   if (DEBUG_PATTERNS.some((pattern) => pattern.test(text))) return 'debug'
   if (SUCCESS_PATTERNS.some((pattern) => pattern.test(text))) return 'success'

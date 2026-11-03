@@ -29,3 +29,38 @@ export function parentOf(path: string): string {
   const index = trimmed.lastIndexOf('/')
   return index <= 0 ? '/' : trimmed.slice(0, index)
 }
+
+export function extensionOf(name: string): string {
+  const trimmed = name.trim().toLowerCase()
+  if (!trimmed) return ''
+  if (trimmed.startsWith('.') && !trimmed.slice(1).includes('.')) {
+    return trimmed.slice(1)
+  }
+  const dot = trimmed.lastIndexOf('.')
+  return dot > 0 && dot < trimmed.length - 1 ? trimmed.slice(dot + 1) : ''
+}
+
+export function normalizeExtensions(raw: string): string[] {
+  return raw
+    .split(/[\s,;]+/)
+    .map((item) => item.trim().toLowerCase().replace(/^\*?\./, ''))
+    .filter(Boolean)
+}
+
+export function matchesFileSearch(
+  entry: FsEntry,
+  nameQuery: string,
+  extQuery: string,
+): boolean {
+  const nameTerm = nameQuery.trim().toLowerCase()
+  const exts = normalizeExtensions(extQuery)
+  if (exts.length > 0) {
+    if (entry.kind === 'dir') return false
+    const ext = extensionOf(entry.name)
+    if (!ext || !exts.includes(ext)) return false
+  }
+  if (nameTerm && !entry.name.toLowerCase().includes(nameTerm)) {
+    return false
+  }
+  return true
+}

@@ -10,7 +10,10 @@ import { AuditPanel } from '@/components/AuditPanel'
 import { DatabasePanel } from '@/components/DatabasePanel'
 import { SecurityPanel } from '@/components/SecurityPanel'
 import { NetworkPanel } from '@/components/NetworkPanel'
+import { FirewallPanel } from '@/components/FirewallPanel'
 import { ConnectionModal } from '@/components/ConnectionModal'
+import { ShareConnectionModal } from '@/components/Sharing/ShareConnectionModal'
+import { ImportShareModal } from '@/components/Sharing/ImportShareModal'
 import { EmptyState } from '@/components/EmptyState'
 import { Toasts } from '@/components/Toasts'
 import { useAppStore } from '@/store/useAppStore'
@@ -57,6 +60,10 @@ export default function App() {
   const activeTabId = useAppStore((state) => state.activeTabId)
   const poolStats = useAppStore((state) => state.poolStats)
   const servers = useAppStore((state) => state.servers)
+  const shareTarget = useAppStore((state) => state.shareTarget)
+  const closeShareModal = useAppStore((state) => state.closeShareModal)
+  const importShareOpen = useAppStore((state) => state.importShareOpen)
+  const closeImportModal = useAppStore((state) => state.closeImportModal)
   const [modalOpen, setModalOpen] = useState(false)
   const [localIp, setLocalIp] = useState<string | null>(null)
   const [publicIp, setPublicIp] = useState<string | null>(null)
@@ -210,6 +217,7 @@ export default function App() {
                 {tab.kind === 'database' && <DatabasePanel profileId={tab.profileId} />}
                 {tab.kind === 'security' && <SecurityPanel profileId={tab.profileId} />}
                 {tab.kind === 'network' && <NetworkPanel profileId={tab.profileId} />}
+                {tab.kind === 'firewall' && <FirewallPanel profileId={tab.profileId} />}
               </section>
             ))
           )}
@@ -280,6 +288,15 @@ export default function App() {
         profile={editing}
         onClose={handleCloseModal}
         onSaved={handleSaved}
+      />
+      <ShareConnectionModal
+        target={shareTarget}
+        onClose={closeShareModal}
+      />
+      <ImportShareModal
+        open={importShareOpen}
+        onClose={closeImportModal}
+        onEditProfile={openEdit}
       />
       <Toasts />
     </div>

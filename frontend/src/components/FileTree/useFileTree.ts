@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { fsService } from '@/services/fs.service'
 import { openDirectoryTerminal } from '@/lib/actions'
-import { isEditable, joinPath, parentOf } from '@/lib/fileTree'
+import {
+  isEditable,
+  joinPath,
+  matchesFileSearch,
+  parentOf,
+} from '@/lib/fileTree'
 import type { FileProperties, FsEntry } from '@/types'
 
 export function useFileTree(profileId: string, tabId: string) {
@@ -20,6 +25,8 @@ export function useFileTree(profileId: string, tabId: string) {
   const [busy, setBusy] = useState(false)
   const [editorTarget, setEditorTarget] = useState<FsEntry | null>(null)
   const [showHidden, setShowHidden] = useState(false)
+  const [searchName, setSearchName] = useState('')
+  const [searchExt, setSearchExt] = useState('')
   const [propertiesTarget, setPropertiesTarget] = useState<FsEntry | null>(null)
   const [properties, setProperties] = useState<FileProperties | null>(null)
   const [propertiesLoading, setPropertiesLoading] = useState(false)
@@ -166,6 +173,34 @@ export function useFileTree(profileId: string, tabId: string) {
     openDirectoryTerminal(profile, targetDir)
   }
 
+  const isFiltering = Boolean(searchName.trim() || searchExt.trim())
+
+  const filteredEntries = useMemo(() => {
+    if (!isFiltering) return []
+    const seen = new Set<string>()
+    const matches: FsEntry[] = []
+    for (const list of Object.values(nodes)) {
+      for (const entry of list) {
+        if (seen.has(entry.path)) continue
+        seen.add(entry.path)
+        if (!showHidden && entry.hidden) continue
+        if (matchesFileSearch(entry, searchName, searchExt)) {
+          matches.push(entry)
+        }
+      }
+    }
+    return matches.sort((a, b) => {
+      if (a.kind === 'dir' && b.kind !== 'dir') return -1
+      if (a.kind !== 'dir' && b.kind === 'dir') return 1
+      return a.name.localeCompare(b.name)
+    })
+  }, [isFiltering, nodes, showHidden, searchName, searchExt])
+
+  const clearSearch = useCallback(() => {
+    setSearchName('')
+    setSearchExt('')
+  }, [])
+
   return {
     cwd,
     profile,
@@ -181,6 +216,13 @@ export function useFileTree(profileId: string, tabId: string) {
     setEditorTarget,
     showHidden,
     setShowHidden,
+    searchName,
+    setSearchName,
+    searchExt,
+    setSearchExt,
+    isFiltering,
+    filteredEntries,
+    clearSearch,
     propertiesTarget,
     setPropertiesTarget,
     properties,
