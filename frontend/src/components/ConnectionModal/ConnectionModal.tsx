@@ -48,7 +48,7 @@ interface FormState {
   connectTimeoutSecs: string
 }
 
-const COLORS = ['#f97316', '#fbbf24', '#a3e635', '#a3e635', '#ef4444', '#fca5a5', '#9ba1ad']
+const COLORS = ['#bd93f9', '#ff79c6', '#8be9fd', '#50fa7b', '#f1fa8c', '#ffb86c', '#ff5555']
 
 const DEFAULTS: FormState = {
   name: '',
@@ -61,7 +61,7 @@ const DEFAULTS: FormState = {
   passphrase: '',
   keyPath: '',
   keySource: 'stored',
-  color: '#f97316',
+  color: '#bd93f9',
   environment: 'development',
   tags: '',
   elevated: false,

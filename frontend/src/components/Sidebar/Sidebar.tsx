@@ -73,12 +73,18 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
 
   return (
     <aside className="sidebar">
+      <div className="sidebar__top-actions">
+        <button className="connect-node" onClick={onNew}>
+          <PlusIcon size={14} /> Connect Node
+        </button>
+      </div>
+
       <div className="sidebar__search">
         <SearchIcon size={13} />
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="FILTER NODES..."
+          placeholder="Filter nodes…"
           spellCheck={false}
         />
       </div>
@@ -88,7 +94,7 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
           className={envFilter === 'all' ? 'is-active' : ''}
           onClick={() => setEnvFilter('all')}
         >
-          ALL <span>({counts.all})</span>
+          All <span>({counts.all})</span>
         </button>
         <button
           className={envFilter === 'production' ? 'is-active' : ''}
@@ -105,8 +111,8 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
       </div>
 
       <div className="sidebar__section-label">
-        <span>FLEET TELEMETRY</span>
-        <span className="online-count">[{counts.online} ONLINE]</span>
+        <span>Fleet Nodes</span>
+        <span className="online-count">[{counts.online} online]</span>
       </div>
 
       <div className="sidebar__list">
@@ -252,14 +258,11 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
       </div>
 
       <div className="sidebar__footer">
-        <button className="connect-node" onClick={onNew}>
-          <PlusIcon size={14} /> CONNECT NODE
-        </button>
         <button
           className="connect-node connect-node--secondary"
           onClick={importShare}
         >
-          <UploadIcon size={14} /> IMPORTAR CONEXIÓN
+          <UploadIcon size={14} /> Importar Conexión
         </button>
         <div className="sidebar__vault">
           <span>TOFU KEY VAULT</span>
