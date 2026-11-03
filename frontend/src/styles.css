@@ -63,8 +63,35 @@ button:disabled {
   opacity: 0.5;
 }
 
-input,
-select,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+select {
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 34px;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+select {
+  padding-right: 30px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a6accd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+}
+
 textarea {
   font-family: inherit;
   font-size: 12.5px;
@@ -73,6 +100,8 @@ textarea {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   outline: none;
+  padding: 8px 10px;
+  box-sizing: border-box;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -2532,8 +2561,17 @@ textarea:focus {
 
 .field input,
 .field select {
-  padding: 8px 10px;
-  font-size: 12px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  line-height: 34px;
+  box-sizing: border-box;
+}
+
+.field select {
+  padding-right: 30px;
 }
 
 .field--wide {
@@ -8641,8 +8679,17 @@ button {
 
 .firewall-form .field input,
 .firewall-form .field select {
-  padding: 7px 9px;
-  font-size: 11px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 34px;
+  box-sizing: border-box;
+}
+
+.firewall-form .field select {
+  padding-right: 28px;
 }
 
 .firewall-form .field input:disabled {
@@ -8720,8 +8767,13 @@ button {
 }
 
 .db-connect__form .field input {
-  padding: 7px 9px;
-  font-size: 11px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 34px;
+  box-sizing: border-box;
 }
 
 .db-connect .field-hint {
