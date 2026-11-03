@@ -1,15 +1,16 @@
 import { ipc } from '@/lib/api'
-import type { DbInfo, DbLoginTest, DbPasswordResult, DbUser } from '@/types'
+import type { DbAuth, DbInfo, DbLoginTest, DbPasswordResult, DbUser } from '@/types'
 
 export const databaseService = {
-  info: (profileId: string) =>
-    ipc.invoke<DbInfo>('database_info', { profileId }),
-  users: (profileId: string) =>
-    ipc.invoke<DbUser[]>('database_users', { profileId }),
-  grants: (profileId: string, user: string, host: string) =>
-    ipc.invoke<string>('database_grants', { profileId, user, host }),
+  info: (profileId: string, auth: DbAuth) =>
+    ipc.invoke<DbInfo>('database_info', { profileId, auth }),
+  users: (profileId: string, auth: DbAuth) =>
+    ipc.invoke<DbUser[]>('database_users', { profileId, auth }),
+  grants: (profileId: string, auth: DbAuth, user: string, host: string) =>
+    ipc.invoke<string>('database_grants', { profileId, auth, user, host }),
   changePassword: (
     profileId: string,
+    auth: DbAuth,
     user: string,
     host: string,
     password: string,
@@ -19,6 +20,7 @@ export const databaseService = {
   ) =>
     ipc.invoke<DbPasswordResult>('database_change_password', {
       profileId,
+      auth,
       user,
       host,
       password,

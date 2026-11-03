@@ -1,11 +1,13 @@
 import { create } from 'zustand'
 import type {
+  EphemeralDatabase,
   MetricsHistory,
   MetricsSnapshot,
   PoolStats,
   Profile,
   ServerInfo,
   ServiceStatus,
+  ShareTarget,
   TabKind,
   TabStatus,
   TerminalInfo,
@@ -36,6 +38,9 @@ interface AppStore {
   serviceStatuses: Record<string, ServiceStatus[]>
   poolStats: PoolStats | null
   toasts: Toast[]
+  pendingDbAuth: Record<string, EphemeralDatabase>
+  shareTarget: ShareTarget | null
+  importShareOpen: boolean
 
   setProfiles: (profiles: Profile[]) => void
   upsertProfile: (profile: Profile) => void
@@ -45,7 +50,7 @@ interface AppStore {
   openProcessTerminal: (profile: Profile, pid: number) => string
   openDirectoryTerminal: (profile: Profile, directory: string) => string
   openAuditTab: () => string
-  openDatabaseTab: () => string
+  openDatabaseTab: (profileId?: string) => string
   openSecurityTab: () => string
   openNetworkTab: (profile: Profile) => string
   openSingletonTab: (profile: Profile, kind: Exclude<TabKind, 'terminal'>) => string
@@ -64,6 +69,13 @@ interface AppStore {
   clearRuntime: (profileId: string) => void
   pushToast: (kind: Toast['kind'], text: string) => void
   dismissToast: (id: string) => void
+  setPendingDbAuth: (entry: EphemeralDatabase) => void
+  consumePendingDbAuth: (profileId: string) => EphemeralDatabase | null
+  clearPendingDbAuth: (profileId: string) => void
+  openShareModal: (target: ShareTarget) => void
+  closeShareModal: () => void
+  openImportModal: () => void
+  closeImportModal: () => void
 }
 
 const EMPTY_HISTORY: MetricsHistory = { cpu: [], mem: [], rx: [], tx: [] }
@@ -89,6 +101,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   serviceStatuses: {},
   poolStats: null,
   toasts: [],
+  pendingDbAuth: {},
+  shareTarget: null,
+  importShareOpen: false,
 
   setProfiles: (profiles) =>
     set((state) => {
@@ -208,11 +223,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return id
   },
 
-  openDatabaseTab: () => {
+  openDatabaseTab: (profileId) => {
     const state = get()
+    const targetProfileId = profileId ?? state.activeProfileId ?? ''
     const existing = state.tabs.find((tab) => tab.kind === 'database')
     if (existing) {
-      set({ activeTabId: existing.id })
+      set({
+        tabs: state.tabs.map((tab) =>
+          tab.id === existing.id ? { ...tab, profileId: targetProfileId } : tab,
+        ),
+        activeTabId: existing.id,
+        activeProfileId: targetProfileId || state.activeProfileId,
+      })
       return existing.id
     }
     const id = newId()
@@ -220,10 +242,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
       id,
       kind: 'database',
       title: 'Databases',
-      profileId: state.activeProfileId ?? '',
+      profileId: targetProfileId,
       status: 'connected',
     }
-    set({ tabs: [...state.tabs, tab], activeTabId: id })
+    set({
+      tabs: [...state.tabs, tab],
+      activeTabId: id,
+      activeProfileId: targetProfileId || state.activeProfileId,
+    })
     return id
   },
 
@@ -282,7 +308,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
     const id = newId()
     const label =
-      kind === 'monitor' ? 'Monitor' : kind === 'services' ? 'Services' : 'Execution log'
+      kind === 'monitor'
+        ? 'Monitor'
+        : kind === 'services'
+          ? 'Services'
+          : kind === 'firewall'
+            ? 'Firewall'
+            : 'Execution log'
     const tab: WorkspaceTab = {
       id,
       kind,
@@ -300,11 +332,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   closeTab: (id) =>
     set((state) => {
+      const closing = state.tabs.find((tab) => tab.id === id)
       const index = state.tabs.findIndex((tab) => tab.id === id)
       const tabs = state.tabs.filter((tab) => tab.id !== id)
       let activeTabId = state.activeTabId
       if (state.activeTabId === id) {
         activeTabId = tabs[Math.min(index, tabs.length - 1)]?.id ?? null
+      }
+      if (closing?.kind === 'database' && closing.profileId) {
+        const pendingDbAuth = { ...state.pendingDbAuth }
+        delete pendingDbAuth[closing.profileId]
+        return { tabs, activeTabId, pendingDbAuth }
       }
       return { tabs, activeTabId }
     }),
@@ -393,17 +431,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const history = { ...state.history }
       const services = { ...state.services }
       const statuses = { ...state.serviceStatuses }
+      const pendingDbAuth = { ...state.pendingDbAuth }
       delete servers[profileId]
       delete metrics[profileId]
       delete history[profileId]
       delete services[profileId]
       delete statuses[profileId]
+      delete pendingDbAuth[profileId]
       return {
         servers,
         metrics,
         history,
         services,
         serviceStatuses: statuses,
+        pendingDbAuth,
       }
     }),
 
@@ -419,4 +460,39 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   dismissToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),
+
+  setPendingDbAuth: (entry) =>
+    set((state) => ({
+      pendingDbAuth: {
+        ...state.pendingDbAuth,
+        [entry.profileId]: entry,
+      },
+    })),
+
+  consumePendingDbAuth: (profileId) => {
+    const state = get()
+    const entry = state.pendingDbAuth[profileId]
+    if (!entry) return null
+    const next = { ...state.pendingDbAuth }
+    delete next[profileId]
+    set({ pendingDbAuth: next })
+    const nowSecs = Math.floor(Date.now() / 1000)
+    if (nowSecs > entry.expiresAt) {
+      return null
+    }
+    return entry
+  },
+
+  clearPendingDbAuth: (profileId) =>
+    set((state) => {
+      if (!(profileId in state.pendingDbAuth)) return {}
+      const next = { ...state.pendingDbAuth }
+      delete next[profileId]
+      return { pendingDbAuth: next }
+    }),
+
+  openShareModal: (target) => set({ shareTarget: target }),
+  closeShareModal: () => set({ shareTarget: null }),
+  openImportModal: () => set({ importShareOpen: true }),
+  closeImportModal: () => set({ importShareOpen: false }),
 }))

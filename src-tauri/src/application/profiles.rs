@@ -263,14 +263,14 @@ impl ProfileService {
                 "retry count must be between 0 and 10".into(),
             ));
         }
-        if profile.connect_timeout_secs < 3 || profile.connect_timeout_secs > 120 {
+        if profile.connect_timeout_secs < 1 || profile.connect_timeout_secs > 300 {
             return Err(AppError::Validation(
-                "connect timeout must be between 3 and 120 seconds".into(),
+                "connect timeout must be between 1 and 300 seconds".into(),
             ));
         }
-        if profile.keepalive_secs > 600 {
+        if profile.keepalive_secs > 3600 {
             return Err(AppError::Validation(
-                "keepalive interval must be <= 600 seconds".into(),
+                "keepalive interval must be <= 3600 seconds".into(),
             ));
         }
         Ok(())
@@ -299,6 +299,13 @@ impl ProfileService {
 
         if needs_fallback(&profile.passphrase) {
             profile.passphrase = existing.passphrase;
+        }
+
+        if profile.source_share_id.is_none() {
+            profile.source_share_id = existing.source_share_id;
+        }
+        if profile.db_target.is_none() {
+            profile.db_target = existing.db_target;
         }
     }
 

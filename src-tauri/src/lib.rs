@@ -113,6 +113,10 @@ pub fn run() {
             presentation::tauri::commands::node_processes,
             presentation::tauri::commands::network_scan,
             presentation::tauri::commands::network_inspect,
+            presentation::tauri::commands::firewall_report,
+            presentation::tauri::commands::firewall_action,
+            presentation::tauri::commands::fail2ban_report,
+            presentation::tauri::commands::fail2ban_action,
             presentation::tauri::commands::sudoers_report,
             presentation::tauri::commands::sudoers_remove_rule,
             presentation::tauri::commands::system_user_lock,
@@ -126,6 +130,13 @@ pub fn run() {
             presentation::tauri::commands::list_security_audits,
             presentation::tauri::commands::get_security_audit,
             presentation::tauri::commands::apply_security_fix,
+            presentation::tauri::commands::share_prepare,
+            presentation::tauri::commands::share_export,
+            presentation::tauri::commands::share_cancel,
+            presentation::tauri::commands::share_inspect,
+            presentation::tauri::commands::share_unlock,
+            presentation::tauri::commands::share_import,
+            presentation::tauri::commands::share_discard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running 2Shell");

@@ -18,6 +18,7 @@ function TabIcon({ kind }: { kind: TabKind }) {
   if (kind === 'database') return <DatabaseIcon size={14} />
   if (kind === 'security') return <ShieldIcon size={14} />
   if (kind === 'network') return <NetworkIcon size={14} />
+  if (kind === 'firewall') return <ShieldIcon size={14} />
   return <TerminalIcon size={14} />
 }
 

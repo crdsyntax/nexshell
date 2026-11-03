@@ -3,9 +3,12 @@ import { useAppStore } from '@/store/useAppStore'
 import {
   deleteProfile,
   detectServerFor,
+  importShare,
   openMonitor,
   openServices,
   openTerminal,
+  profileNeedsCredentials,
+  shareProfile,
 } from '@/lib/actions'
 import {
   ActivityIcon,
@@ -14,8 +17,10 @@ import {
   RefreshIcon,
   SearchIcon,
   ServerIcon,
+  ShareIcon,
   TerminalIcon,
   TrashIcon,
+  UploadIcon,
 } from '@/components/Icons'
 import type { Profile } from '@/types'
 
@@ -123,21 +128,26 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
         {filtered.map((profile) => {
           const server = servers[profile.id]
           const active = profile.id === activeProfileId
+          const needsCreds = profileNeedsCredentials(profile)
           return (
-            <div
+            <article
               key={profile.id}
-              className={`profile-card ${active ? 'is-active' : ''}`}
+              className={`profile-card ${active ? 'is-active' : ''} ${server ? 'is-online' : ''}`}
               style={{ ['--profile-color' as string]: profile.color }}
               onClick={() => setActiveProfile(profile.id)}
-              onDoubleClick={() => openTerminal(profile)}
+              onDoubleClick={() => {
+                if (needsCreds) {
+                  onEdit(profile)
+                } else {
+                  openTerminal(profile)
+                }
+              }}
             >
               <div className="profile-card__stripe" />
               <div className="profile-card__body">
                 <div className="profile-card__title-row">
-                  <span className="profile-card__name">
-                    {active ? '▸ ' : ''}
-                    {profile.name}
-                  </span>
+                  <span className="profile-card__dot" />
+                  <span className="profile-card__name">{profile.name}</span>
                   <span className={`env-chip env-${profile.environment}`}>
                     {envLabel(profile.environment)}
                   </span>
@@ -151,7 +161,7 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
                     <>
                       <span className="node-tag">{server.distroId || server.distroFamily}</span>
                       <span className="node-tag">{server.hostname}</span>
-                      <span className="node-tag">{server.initSystem}</span>
+                      <span className="node-tag">{server.latencyMs}ms</span>
                     </>
                   ) : (
                     <>
@@ -159,40 +169,84 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
                         {profile.authMethod === 'key' ? 'key' : 'password'}
                       </span>
                       <span className="node-tag">pool {profile.pool.maxConnections}</span>
+                      {profile.elevated && <span className="node-tag">sudo</span>}
                     </>
                   )}
+                  {needsCreds && (
+                    <span className="node-tag node-tag--warn">sin credenciales</span>
+                  )}
                 </div>
-              </div>
 
-              <div className="profile-card__actions" onClick={(event) => event.stopPropagation()}>
-                <button className="icon-button" title="Open terminal" onClick={() => openTerminal(profile)}>
-                  <TerminalIcon size={13} />
-                </button>
-                <button className="icon-button" title="Performance monitor" onClick={() => openMonitor(profile)}>
-                  <ActivityIcon size={13} />
-                </button>
-                <button className="icon-button" title="Web services" onClick={() => openServices(profile)}>
-                  <ServerIcon size={13} />
-                </button>
-                <button className="icon-button" title="Detect server" onClick={() => void detectServerFor(profile.id, true)}>
-                  <RefreshIcon size={13} />
-                </button>
-                <button className="icon-button" title="Edit profile" onClick={() => onEdit(profile)}>
-                  <EditIcon size={13} />
-                </button>
-                <button
-                  className="icon-button is-danger"
-                  title="Delete profile"
-                  onClick={() => {
-                    if (window.confirm(`Delete profile "${profile.name}"?`)) {
-                      void deleteProfile(profile)
-                    }
-                  }}
+                <footer
+                  className="profile-card__footer"
+                  onClick={(event) => event.stopPropagation()}
                 >
-                  <TrashIcon size={13} />
-                </button>
+                  <div className="profile-card__actions">
+                    <button
+                      className="icon-button"
+                      title="Open terminal"
+                      onClick={() => {
+                        if (needsCreds) {
+                          onEdit(profile)
+                        } else {
+                          openTerminal(profile)
+                        }
+                      }}
+                    >
+                      <TerminalIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Performance monitor"
+                      onClick={() => openMonitor(profile)}
+                    >
+                      <ActivityIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Web services"
+                      onClick={() => openServices(profile)}
+                    >
+                      <ServerIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Detect server"
+                      onClick={() => void detectServerFor(profile.id, true)}
+                    >
+                      <RefreshIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Compartir conexión"
+                      onClick={() => shareProfile(profile)}
+                    >
+                      <ShareIcon size={13} />
+                    </button>
+                  </div>
+                  <div className="profile-card__actions profile-card__actions--manage">
+                    <button
+                      className="icon-button"
+                      title="Edit profile"
+                      onClick={() => onEdit(profile)}
+                    >
+                      <EditIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button is-danger"
+                      title="Delete profile"
+                      onClick={() => {
+                        if (window.confirm(`Delete profile "${profile.name}"?`)) {
+                          void deleteProfile(profile)
+                        }
+                      }}
+                    >
+                      <TrashIcon size={13} />
+                    </button>
+                  </div>
+                </footer>
               </div>
-            </div>
+            </article>
           )
         })}
       </div>
@@ -200,6 +254,12 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
       <div className="sidebar__footer">
         <button className="connect-node" onClick={onNew}>
           <PlusIcon size={14} /> CONNECT NODE
+        </button>
+        <button
+          className="connect-node connect-node--secondary"
+          onClick={importShare}
+        >
+          <UploadIcon size={14} /> IMPORTAR CONEXIÓN
         </button>
         <div className="sidebar__vault">
           <span>TOFU KEY VAULT</span>

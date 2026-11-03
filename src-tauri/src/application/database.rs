@@ -1,5 +1,5 @@
 use crate::application::pool::PoolManager;
-use crate::application::services::{maybe_sudo, shell_quote};
+use crate::application::services::shell_quote;
 use crate::error::{AppError, AppResult};
 use crate::models::{ConnectionProfile, DbInfo, DbLoginTest, DbPasswordResult, DbUser};
 use std::time::Duration;
@@ -14,10 +14,77 @@ const SYSTEM_USERS: &[&str] = &[
     "mysql",
 ];
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbAuth {
+    pub user: String,
+    pub password: String,
+    pub host: String,
+    pub port: u16,
+}
+
+impl DbAuth {
+    fn validate(&self) -> AppResult<()> {
+        if self.user.trim().is_empty() {
+            return Err(AppError::Validation("database user is required".into()));
+        }
+        if self.password.is_empty() {
+            return Err(AppError::Validation(
+                "database password is required; no connection attempt was made".into(),
+            ));
+        }
+        if self.port == 0 {
+            return Err(AppError::Validation(
+                "database port must be between 1 and 65535".into(),
+            ));
+        }
+        if self.user.chars().any(|c| c.is_control()) || self.host.chars().any(|c| c.is_control()) {
+            return Err(AppError::Validation(
+                "database user and host must not contain control characters".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn auth_command(
+    profile: &ConnectionProfile,
+    binary: &str,
+    auth: &DbAuth,
+    sql: &str,
+) -> AppResult<String> {
+    auth.validate()?;
+    let host = auth.host.trim();
+    let host_arg = if host.is_empty() || host.eq_ignore_ascii_case("localhost") {
+        String::new()
+    } else {
+        format!(" -h {}", shell_quote(host))
+    };
+    let base = format!(
+        "-u {} -P {}{} --connect-timeout=5 -N -B -e {}",
+        shell_quote(&auth.user),
+        auth.port,
+        host_arg,
+        shell_quote(sql)
+    );
+    let password = shell_quote(&auth.password);
+    let binary = shell_quote(binary);
+    if profile.username != "root" && profile.elevated {
+        Ok(format!("sudo -n env MYSQL_PWD={password} {binary} {base}"))
+    } else {
+        Ok(format!("MYSQL_PWD={password} {binary} {base}"))
+    }
+}
+
 pub struct DatabaseManager;
 
 impl DatabaseManager {
-    pub async fn info(pools: &PoolManager, profile: &ConnectionProfile) -> AppResult<DbInfo> {
+    pub async fn info(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        auth: &DbAuth,
+    ) -> AppResult<DbInfo> {
+        auth.validate()?;
         let binary = match client_binary(pools, profile).await {
             Ok(binary) => binary,
             Err(error) => {
@@ -48,14 +115,15 @@ echo "$s""#,
             .map(|output| output.stdout.trim().to_string())
             .unwrap_or_else(|_| "unknown".to_string());
 
-        let command = format!(
-            "{} -N -B -e {}",
-            privileged_client(profile, &binary),
-            shell_quote("SELECT VERSION(), @@hostname, @@port, @@socket;")
-        );
+        let command = auth_command(
+            profile,
+            &binary,
+            auth,
+            "SELECT VERSION(), @@hostname, @@port, @@socket;",
+        )?;
 
         match pools
-            .execute_with_category(&profile.id, &command, DB_TIMEOUT, "database")
+            .execute_sensitive(&profile.id, &command, DB_TIMEOUT)
             .await
         {
             Ok(output) if output.success() => {
@@ -100,15 +168,20 @@ echo "$s""#,
         }
     }
 
-    pub async fn users(pools: &PoolManager, profile: &ConnectionProfile) -> AppResult<Vec<DbUser>> {
+    pub async fn users(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        auth: &DbAuth,
+    ) -> AppResult<Vec<DbUser>> {
         let binary = client_binary(pools, profile).await?;
-        let command = format!(
-            "{} -N -B -e {}",
-            privileged_client(profile, &binary),
-            shell_quote("SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host;")
-        );
+        let command = auth_command(
+            profile,
+            &binary,
+            auth,
+            "SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host;",
+        )?;
         let output = pools
-            .execute_with_category(&profile.id, &command, DB_TIMEOUT, "database")
+            .execute_sensitive(&profile.id, &command, DB_TIMEOUT)
             .await?;
 
         if !output.success() {
@@ -147,19 +220,16 @@ echo "$s""#,
     pub async fn grants(
         pools: &PoolManager,
         profile: &ConnectionProfile,
+        auth: &DbAuth,
         user: &str,
         host: &str,
     ) -> AppResult<String> {
         validate_account(user, host)?;
         let binary = client_binary(pools, profile).await?;
         let sql = format!("SHOW GRANTS FOR {}@{};", sql_string(user), sql_string(host));
-        let command = format!(
-            "{} -N -B -e {}",
-            privileged_client(profile, &binary),
-            shell_quote(&sql)
-        );
+        let command = auth_command(profile, &binary, auth, &sql)?;
         let output = pools
-            .execute_with_category(&profile.id, &command, DB_TIMEOUT, "database")
+            .execute_sensitive(&profile.id, &command, DB_TIMEOUT)
             .await?;
         if !output.success() {
             return Err(AppError::Remote(format!(
@@ -175,6 +245,7 @@ echo "$s""#,
     pub async fn change_password(
         pools: &PoolManager,
         profile: &ConnectionProfile,
+        auth: &DbAuth,
         user: &str,
         host: &str,
         password: &str,
@@ -192,11 +263,7 @@ echo "$s""#,
             sql_string(host),
             sql_string(password)
         );
-        let command = format!(
-            "{} <<'NEXSQL'\n{}\nNEXSQL",
-            privileged_client(profile, &binary),
-            sql
-        );
+        let command = auth_command(profile, &binary, auth, &sql)?;
         let output = pools
             .execute_sensitive(&profile.id, &command, DB_TIMEOUT)
             .await?;
@@ -325,14 +392,6 @@ async fn client_binary(pools: &PoolManager, profile: &ConnectionProfile) -> AppR
     Ok(binary)
 }
 
-fn privileged_client(profile: &ConnectionProfile, binary: &str) -> String {
-    if profile.username == "root" {
-        shell_quote(binary)
-    } else {
-        maybe_sudo(profile, &shell_quote(binary))
-    }
-}
-
 fn default_test_host(account_host: &str) -> &str {
     if account_host == "localhost" {
         "localhost"
@@ -383,6 +442,37 @@ fn sql_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn auth(host: &str) -> DbAuth {
+        DbAuth {
+            user: "root".into(),
+            password: "s3cret-pass".into(),
+            host: host.into(),
+            port: 3306,
+        }
+    }
+
+    #[test]
+    fn requires_a_password_before_any_query() {
+        let mut missing = auth("localhost");
+        missing.password.clear();
+        assert!(missing.validate().is_err());
+        assert!(auth("localhost").validate().is_ok());
+    }
+
+    #[test]
+    fn builds_authenticated_client_command_without_leaking_host_for_localhost() {
+        let profile = ConnectionProfile::default();
+        let sql = "SELECT 1;";
+        let local = auth_command(&profile, "/usr/bin/mariadb", &auth("localhost"), sql).unwrap();
+        assert!(local.contains("MYSQL_PWD='s3cret-pass'"));
+        assert!(local.contains("-u 'root' -P 3306"));
+        assert!(!local.contains(" -h "));
+        assert!(local.contains("-e 'SELECT 1;'"));
+
+        let remote = auth_command(&profile, "/usr/bin/mariadb", &auth("127.0.0.1"), sql).unwrap();
+        assert!(remote.contains("-h '127.0.0.1'"));
+    }
 
     #[test]
     fn escapes_sql_strings() {

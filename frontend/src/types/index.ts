@@ -14,6 +14,14 @@ export interface PoolSettings {
   idleTimeoutSecs: number
 }
 
+export interface DbTarget {
+  engine: string
+  host: string
+  port: number
+  user: string
+  socket?: string | null
+}
+
 export interface Profile {
   id: string
   name: string
@@ -30,12 +38,16 @@ export interface Profile {
   keepaliveSecs: number
   connectTimeoutSecs: number
   elevated: boolean
+  sourceShareId?: string | null
+  dbTarget?: DbTarget | null
   createdAt: number
   updatedAt: number
   hasPassword: boolean
   hasPrivateKey: boolean
   hasPassphrase: boolean
 }
+
+export type ConnectionProfile = Profile
 
 export interface ProfileInput {
   id: string
@@ -58,6 +70,8 @@ export interface ProfileInput {
   keepaliveSecs: number
   connectTimeoutSecs: number
   elevated: boolean
+  sourceShareId?: string | null
+  dbTarget?: DbTarget | null
 }
 
 export interface DetectedWebServer {
@@ -144,6 +158,13 @@ export interface ProcessLocation {
   accessible: boolean
 }
 
+export interface DbAuth {
+  user: string
+  password: string
+  host: string
+  port: number
+}
+
 export interface DbInfo {
   installed: boolean
   client: string
@@ -224,6 +245,72 @@ export interface NetworkReport {
   connections: NetworkConnection[]
   listeningSummary: string[]
   stats: string[]
+}
+
+export interface Fail2banJail {
+  name: string
+  enabled: boolean
+  currentlyFailed: number
+  totalFailed: number
+  currentlyBanned: number
+  totalBanned: number
+  banned: string[]
+  maxretry: number
+  findtime: string
+  bantime: string
+  ignoreip: string[]
+}
+
+export interface Fail2banReport {
+  hostname: string
+  installed: boolean
+  active: boolean
+  version: string
+  canManage: boolean
+  jails: string[]
+  sshd: Fail2banJail | null
+  warnings: string[]
+  raw: string[]
+  generatedAt: number
+}
+
+export interface Fail2banActionResult {
+  ok: boolean
+  action: string
+  output: string
+}
+
+export interface FirewallRule {
+  id: string
+  action: string
+  port: string
+  protocol: string
+  from: string
+  comment: string
+}
+
+export interface FirewallReport {
+  hostname: string
+  os: string
+  packageManager: string
+  backend: string
+  installed: boolean
+  active: boolean
+  canManage: boolean
+  defaultIncoming: string
+  defaultOutgoing: string
+  sshPorts: number[]
+  sshAllowed: number[]
+  rules: FirewallRule[]
+  warnings: string[]
+  raw: string[]
+  generatedAt: number
+}
+
+export interface FirewallActionResult {
+  ok: boolean
+  action: string
+  output: string
 }
 
 export interface InspectionSection {
@@ -729,6 +816,7 @@ export type TabKind =
   | 'database'
   | 'security'
   | 'network'
+  | 'firewall'
 export type TabStatus = 'connecting' | 'connected' | 'closed' | 'error'
 
 export interface WorkspaceTab {
@@ -748,4 +836,146 @@ export interface MetricsHistory {
   mem: number[]
   rx: number[]
   tx: number[]
+}
+
+export type ShareMode = 'metadata' | 'secrets'
+
+export interface ShareOptions {
+  mode: ShareMode
+  includeSshPassword: boolean
+  includePrivateKey: boolean
+  includePrivateKeyFile: boolean
+  includePassphrase: boolean
+  includeDatabase: boolean
+  includeDatabasePassword: boolean
+  includeHostKey: boolean
+  expiresInSecs: number
+  databaseOverride?: DbTarget | null
+}
+
+export interface SharePrepareResult {
+  shareId: string
+  passphrase: string
+  mode: ShareMode
+  expiresAt: number
+  warnings: string[]
+}
+
+export interface ShareExportResult {
+  path: string
+  bytes: number
+  sha256: string
+  expiresAt: number
+}
+
+export interface ShareHeaderView {
+  format: string
+  version: number
+  shareId: string
+  createdAt: number
+  expiresAt: number
+  mode: ShareMode
+  bytes: number
+  expired: boolean
+  needsPassphrase: boolean
+}
+
+export interface ShareConflictCandidate {
+  profileId: string
+  profileName: string
+  host: string
+  port: number
+  username: string
+  matchedBy: string
+}
+
+export interface ShareProfileSummary {
+  name: string
+  host: string
+  port: number
+  username: string
+  authMethod: AuthMethod
+  environment: string
+  color: string
+  tags: string[]
+  keepaliveSecs: number
+  connectTimeoutSecs: number
+  retry: RetryPolicy
+  pool: PoolSettings
+  elevated: boolean
+}
+
+export interface ShareConnectionPreview {
+  shareEntryId: string
+  profile: ShareProfileSummary
+  hasSshPassword: boolean
+  hasPrivateKey: boolean
+  hasPassphrase: boolean
+  hasDatabasePassword: boolean
+  needsCredentials: boolean
+  keyPathHint: string | null
+  hostKey: { fingerprint: string; algorithm?: string | null } | null
+  database: DbTarget | null
+  conflicts: ShareConflictCandidate[]
+}
+
+export interface SharePreview {
+  shareId: string
+  createdAt: number
+  expiresAt: number
+  mode: ShareMode
+  origin?: { app: string; version: string; platform: string } | null
+  connections: ShareConnectionPreview[]
+}
+
+export type ConflictPolicy = 'skip' | 'overwrite' | 'duplicate'
+
+export interface ShareImportOptions {
+  trustHostKey: boolean
+  openDatabase: boolean
+}
+
+export interface ImportedEntryReport {
+  shareEntryId: string
+  profileId: string
+  action: string
+}
+
+export interface SkippedEntryReport {
+  shareEntryId: string
+  existingProfileId: string | null
+  reason: string
+}
+
+export interface HostKeyImportReport {
+  host: string
+  port: number
+  fingerprint: string
+  pinned: boolean
+}
+
+export interface EphemeralDatabase {
+  profileId: string
+  engine: string
+  host: string
+  port: number
+  user: string
+  password: string
+  expiresAt: number
+}
+
+export interface ImportReport {
+  shareId: string
+  mode: ShareMode
+  imported: ImportedEntryReport[]
+  skipped: SkippedEntryReport[]
+  needsCredentials: string[]
+  hostKeys: HostKeyImportReport[]
+  ephemeralDatabase: EphemeralDatabase | null
+}
+
+export interface ShareTarget {
+  profile: Profile
+  database?: DbTarget | null
+  dbPassword?: string
 }

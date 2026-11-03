@@ -22,6 +22,8 @@ pub enum AppError {
     Remote(String),
     #[error("Terminal error: {0}")]
     Terminal(String),
+    #[error("{code}: {message}")]
+    Share { code: &'static str, message: String },
 }
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -36,6 +38,21 @@ impl Serialize for AppError {
 }
 
 impl AppError {
+    pub fn share(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Share {
+            code,
+            message: message.into(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn share_code(&self) -> Option<&'static str> {
+        match self {
+            AppError::Share { code, .. } => Some(*code),
+            _ => None,
+        }
+    }
+
     pub fn is_retryable(&self) -> bool {
         match self {
             AppError::Auth(_)
@@ -43,6 +60,15 @@ impl AppError {
             | AppError::NotFound(_)
             | AppError::Crypto(_)
             | AppError::Storage(_) => false,
+            AppError::Share { code, .. } => matches!(
+                *code,
+                "SHARE_BAD_PASSPHRASE"
+                    | "SHARE_RATE_LIMITED"
+                    | "SHARE_IO"
+                    | "SHARE_SESSION_EXPIRED"
+                    | "SHARE_CANCELLED"
+                    | "SHARE_KEY_UNREADABLE"
+            ),
             AppError::Ssh(message) => {
                 !message.contains("Unknown server key") && !message.contains("host key")
             }

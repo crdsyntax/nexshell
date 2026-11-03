@@ -36,9 +36,10 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
   **Root filesystem** incluye un escaneo de los 20 archivos más grandes
   (`find / -xdev | du | sort -rh`), con acciones para abrir su carpeta, ver propiedades
   y eliminarlos.
-- **Gestión de MariaDB/MySQL**: lista usuarios y hosts, muestra plugins y grants,
-  cambia contraseñas con generación segura y prueba la nueva credencial. No modifica
-  automáticamente el `.env` de la aplicación.
+- **Gestión de MariaDB/MySQL**: **no conecta ni detecta nada hasta introducir la
+  contraseña**; después lista usuarios y hosts, muestra plugins y grants, cambia
+  contraseñas con generación segura y prueba la nueva credencial. Las credenciales
+  viven solo en memoria. No modifica automáticamente el `.env` de la aplicación.
 - **SSH Access**: lista claves autorizadas, añade/elimina claves públicas y activa el
   acceso **solo por clave**, deshabilitando `PasswordAuthentication` mediante un
   drop-in validado y reversible de `sshd`.
@@ -59,6 +60,15 @@ host en tiempo real y administra **nginx**, **apache2** y **httpd** sin salir de
   variables de entorno, referencias al IP/host/puerto en el proyecto y sondeo TLS
   manual). El detalle se abre **a pantalla completa** con pestañas **Tráfico**, **Proceso**,
   **Diagnóstico** y **Titular IP**.
+- **Firewall**: panel dedicado con detección de UFW/firewalld, instalación, activación
+  con **allow de SSH (22, puerto del perfil y puertos de sshd) antes de habilitar**,
+  política `deny incoming`, reglas allow/deny por puerto/protocolo/origen, **origen
+  IPv4/IPv6/CIDR o «Mi IP»**, edición del origen de reglas UFW y desactivación con
+  confirmación. Los backups quedan en `/var/backups/2shell/firewall`.
+- **Fail2ban** (en Security): detecta instalación y jail `sshd`, instala y activa
+  fail2ban, muestra fallos/baneos, permite **banear/desbloquear IPv4 e IPv6** y
+  configurar `maxretry`, `findtime`, `bantime` e `ignoreip`, incluida la opción
+  **Añadir mi IP** para no autobloquearse.
 - **IPs del equipo**: la barra de estado muestra `LOCAL` (interfaz con salida) y `WAN`
   (IP pública por HTTPS); clic para copiarlas.
 - **Alertas en segundo plano**: botón `Alerts`; mientras la app esté abierta (aunque esté
@@ -353,6 +363,10 @@ almacena la contraseña de sudo.
 | `node_processes` | Procesos Node/PM2 con CPU y memoria |
 | `network_scan` | Puertos y conexiones |
 | `network_inspect` | Diagnóstico de una conexión: socket, proceso, FDs, entorno, referencias y TLS opcional |
+| `firewall_report` | Estado, reglas y puertos SSH de UFW/firewalld |
+| `firewall_action` | Instalar, activar, desactivar o editar reglas del firewall |
+| `fail2ban_report` | Estado de fail2ban, jail sshd, baneos e IPs ignoradas |
+| `fail2ban_action` | Instalar/activar fail2ban, recargar, banear/desbloquear e ignoreip |
 | `sudoers_report` | Grupos, reglas y cuentas de sudoers |
 | `sudoers_remove_rule` | Elimina una regla con backup y visudo |
 | `system_user_lock` | Bloquea/desbloquea una cuenta |
