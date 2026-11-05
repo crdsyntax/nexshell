@@ -175,14 +175,29 @@ echo "sha256=$sha"
                 r####"set -e
 ip={ip}
 family={family}
-iptables -I INPUT 1 -s "$ip" -j DROP 2>/dev/null || true
-iptables -I OUTPUT 1 -d "$ip" -j DROP 2>/dev/null || true
+if [ "$family" = "ipv6" ]; then
+  ip6tables -I INPUT 1 -s "$ip" -j DROP 2>/dev/null || true
+  ip6tables -I OUTPUT 1 -d "$ip" -j DROP 2>/dev/null || true
+else
+  iptables -I INPUT 1 -s "$ip" -j DROP 2>/dev/null || true
+  iptables -I OUTPUT 1 -d "$ip" -j DROP 2>/dev/null || true
+fi
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+  ufw insert 1 deny from "$ip" to any >/dev/null 2>&1 || true
+fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
   firewall-cmd --permanent --add-rich-rule="rule family=$family source address=$ip drop" >/dev/null 2>&1 || true
   firewall-cmd --reload >/dev/null 2>&1 || true
 fi
-echo "blocked $ip (iptables INPUT/OUTPUT)"
-iptables -S 2>/dev/null | grep -F "$ip" || echo "note: no persistent iptables rule (not installed?)"
+if command -v fail2ban-client >/dev/null 2>&1; then
+  fail2ban-client set sshd banip "$ip" >/dev/null 2>&1 || true
+fi
+if command -v netfilter-persistent >/dev/null 2>&1; then
+  netfilter-persistent save >/dev/null 2>&1 || true
+elif [ -d /etc/iptables ]; then
+  iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+fi
+echo "blocked $ip (iptables/ufw/firewalld/fail2ban)"
 "####,
                 ip = quoted,
                 family = family
@@ -192,11 +207,27 @@ iptables -S 2>/dev/null | grep -F "$ip" || echo "note: no persistent iptables ru
                 r####"set -e
 ip={ip}
 family={family}
-iptables -D INPUT -s "$ip" -j DROP 2>/dev/null || true
-iptables -D OUTPUT -d "$ip" -j DROP 2>/dev/null || true
+if [ "$family" = "ipv6" ]; then
+  ip6tables -D INPUT -s "$ip" -j DROP 2>/dev/null || true
+  ip6tables -D OUTPUT -d "$ip" -j DROP 2>/dev/null || true
+else
+  iptables -D INPUT -s "$ip" -j DROP 2>/dev/null || true
+  iptables -D OUTPUT -d "$ip" -j DROP 2>/dev/null || true
+fi
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+  ufw delete deny from "$ip" to any >/dev/null 2>&1 || true
+fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
   firewall-cmd --permanent --remove-rich-rule="rule family=$family source address=$ip drop" >/dev/null 2>&1 || true
   firewall-cmd --reload >/dev/null 2>&1 || true
+fi
+if command -v fail2ban-client >/dev/null 2>&1; then
+  fail2ban-client set sshd unbanip "$ip" >/dev/null 2>&1 || true
+fi
+if command -v netfilter-persistent >/dev/null 2>&1; then
+  netfilter-persistent save >/dev/null 2>&1 || true
+elif [ -d /etc/iptables ]; then
+  iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 fi
 echo "unblocked $ip"
 "####,
@@ -205,6 +236,39 @@ echo "unblocked $ip"
             )
         };
         run_action(pools, profile, &script).await
+    }
+
+    pub async fn list_blocked_ips(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+    ) -> AppResult<Vec<String>> {
+        let script = r####"export LC_ALL=C 2>/dev/null
+iptables -S INPUT 2>/dev/null | awk '/-j DROP/ {for(i=1;i<=NF;i++) if($i=="-s") print $(i+1)}' | sed 's|/32$||' || true
+ip6tables -S INPUT 2>/dev/null | awk '/-j DROP/ {for(i=1;i<=NF;i++) if($i=="-s") print $(i+1)}' | sed 's|/128$||' || true
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+  ufw status 2>/dev/null | awk '/DENY/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ || $i ~ /^[0-9a-fA-F:]+$/) print $i}' || true
+fi
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+  firewall-cmd --list-rich-rules 2>/dev/null | grep drop | grep -oE 'source address="[^"]+"' | cut -d'"' -f2 || true
+fi
+if command -v fail2ban-client >/dev/null 2>&1; then
+  fail2ban-client status sshd 2>/dev/null | awk -F: '/Banned IP list/ {print $2}' | tr ' ' '\n' || true
+fi
+"####;
+        let output = pools
+            .execute_with_category(&profile.id, &as_root(profile, script), ACTION_TIMEOUT, "incident")
+            .await?;
+        let mut ips: Vec<String> = Vec::new();
+        for line in output.stdout.lines() {
+            let trimmed = line.trim();
+            if let Ok(addr) = trimmed.parse::<IpAddr>() {
+                let s = addr.to_string();
+                if !ips.contains(&s) {
+                    ips.push(s);
+                }
+            }
+        }
+        Ok(ips)
     }
 }
 

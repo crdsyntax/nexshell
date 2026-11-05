@@ -75,6 +75,7 @@ vi.mock('@/services/incident.service', () => ({
     kill: vi.fn(async () => ({ ok: true, output: 'killed' })),
     quarantine: vi.fn(async () => ({ ok: true, output: 'quarantined' })),
     blockIp: vi.fn(async () => ({ ok: true, output: 'iptables updated' })),
+    listBlockedIps: vi.fn(async () => ['2.57.121.25']),
   },
 }))
 

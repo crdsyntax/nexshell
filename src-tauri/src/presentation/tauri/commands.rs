@@ -955,6 +955,15 @@ pub async fn incident_block_ip(
 }
 
 #[tauri::command]
+pub async fn incident_list_blocked_ips(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let profile = state.profiles.get(&profile_id)?;
+    IncidentManager::list_blocked_ips(&state.pools, &profile).await
+}
+
+#[tauri::command]
 pub async fn pm2_list(profile_id: String, state: State<'_, AppState>) -> AppResult<Pm2Report> {
     let profile = state.profiles.get(&profile_id)?;
     Pm2Manager::list(&state.pools, &profile).await

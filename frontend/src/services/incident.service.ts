@@ -9,4 +9,6 @@ export const incidentService = {
     ipc.invoke<IncidentActionResult>('incident_quarantine', { profileId, path }),
   blockIp: (profileId: string, ip: string, block: boolean) =>
     ipc.invoke<IncidentActionResult>('incident_block_ip', { profileId, ip, block }),
+  listBlockedIps: (profileId: string) =>
+    ipc.invoke<string[]>('incident_list_blocked_ips', { profileId }),
 }

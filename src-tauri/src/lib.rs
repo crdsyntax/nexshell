@@ -107,6 +107,7 @@ pub fn run() {
             presentation::tauri::commands::incident_kill_process,
             presentation::tauri::commands::incident_quarantine,
             presentation::tauri::commands::incident_block_ip,
+            presentation::tauri::commands::incident_list_blocked_ips,
             presentation::tauri::commands::pm2_list,
             presentation::tauri::commands::pm2_action,
             presentation::tauri::commands::pm2_logs,

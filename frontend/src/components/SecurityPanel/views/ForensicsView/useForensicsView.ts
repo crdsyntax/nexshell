@@ -32,12 +32,21 @@ export function useForensicsView(profileId: string) {
 
   const syncBlockedIps = useCallback(async () => {
     try {
-      const report = await fail2banService.report(profileId)
-      if (report?.sshd?.banned && report.sshd.banned.length > 0) {
-        setBlockedIps((current) => [...new Set([...current, ...report.sshd!.banned])])
+      const serverBlocked = await incidentService.listBlockedIps(profileId)
+      if (serverBlocked && Array.isArray(serverBlocked)) {
+        setBlockedIps(serverBlocked)
+        return
       }
     } catch {
-      // fail2ban may be uninstalled or inactive on host
+      // Fallback: query fail2ban if direct inspection is unavailable
+      try {
+        const report = await fail2banService.report(profileId)
+        if (report?.sshd?.banned && report.sshd.banned.length > 0) {
+          setBlockedIps((current) => [...new Set([...current, ...report.sshd!.banned])])
+        }
+      } catch {
+        // fail2ban may be uninstalled or inactive on host
+      }
     }
   }, [profileId])
 
