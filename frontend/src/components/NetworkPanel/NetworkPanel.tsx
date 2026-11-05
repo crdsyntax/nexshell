@@ -1,4 +1,5 @@
 import { useNetworkPanel } from './useNetworkPanel'
+import { InspectionSectionView } from './InspectionSectionView'
 import {
   ActivityIcon,
   AlertIcon,
@@ -529,7 +530,7 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
                       <section className="inspection">
                         <header>
                           <div className="ip-owner__title">
-                            <SearchIcon size={12} />
+                            <SearchIcon size={14} />
                             <h3>Diagnóstico de la conexión</h3>
                             <span className="mono">{traffic.remote}</span>
                           </div>
@@ -552,6 +553,14 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
                             >
                               <ShieldIcon size={12} /> Sondear TLS
                             </button>
+                            <button
+                              className="top-action"
+                              onClick={() => void copyInspection()}
+                              disabled={!inspection}
+                              title="Copiar diagnóstico completo"
+                            >
+                              <CopyIcon size={12} /> Copiar todo
+                            </button>
                           </div>
                         </header>
 
@@ -572,13 +581,7 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
                         )}
 
                         {inspection?.sections.map((section) => (
-                          <details className="inspection__block" key={section.title} open>
-                            <summary>
-                              {section.title}
-                              <span>{section.lines.length}</span>
-                            </summary>
-                            <pre>{section.lines.join('\n')}</pre>
-                          </details>
+                          <InspectionSectionView key={section.title} section={section} />
                         ))}
                       </section>
                     </div>

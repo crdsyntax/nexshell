@@ -1,3 +1,4 @@
+import { fail2banService } from '@/services/fail2ban.service'
 import { forensicsService } from '@/services/forensics.service'
 import { incidentService } from '@/services/incident.service'
 import { useAppStore } from '@/store/useAppStore'
@@ -22,13 +23,28 @@ export function useForensicsView(profileId: string) {
   const [error, setError] = useState<string | null>(null)
   const [blockedIps, setBlockedIps] = useState<string[]>([])
   const [blocking, setBlocking] = useState<string | null>(null)
+
+  const syncBlockedIps = useCallback(async () => {
+    try {
+      const report = await fail2banService.report(profileId)
+      if (report?.sshd?.banned && report.sshd.banned.length > 0) {
+        setBlockedIps((current) => [...new Set([...current, ...report.sshd!.banned])])
+      }
+    } catch {
+      // fail2ban may be uninstalled or inactive on host
+    }
+  }, [profileId])
+
   const run = useCallback(
     async (target: ForensicsSection) => {
       setLoading(true)
       setError(null)
       try {
         if (target === 'sessions') setSessions(await forensicsService.sessions(profileId))
-        if (target === 'auth') setAttempts(await forensicsService.auth(profileId, 300))
+        if (target === 'auth') {
+          setAttempts(await forensicsService.auth(profileId, 300))
+          void syncBlockedIps()
+        }
         if (target === 'artifacts') setArtifacts(await forensicsService.artifacts(profileId, path))
         if (target === 'search') {
           if (!query.trim()) {
@@ -46,11 +62,12 @@ export function useForensicsView(profileId: string) {
         setLoading(false)
       }
     },
-    [profileId, path, query, regex, pushToast],
+    [profileId, path, query, regex, pushToast, syncBlockedIps],
   )
   useEffect(() => {
     void run('sessions')
-  }, [profileId])
+    void syncBlockedIps()
+  }, [profileId, syncBlockedIps])
   useEffect(() => {
     if (section === 'auth' && attempts.length === 0) void run('auth')
   }, [section])
@@ -63,6 +80,25 @@ export function useForensicsView(profileId: string) {
       if (result.ok) {
         setBlockedIps((current) => [...new Set([...current, ip])])
         pushToast('success', result.output)
+      } else {
+        pushToast('error', result.output)
+      }
+    } catch (err) {
+      pushToast('error', String(err))
+    } finally {
+      setBlocking(null)
+    }
+  }
+  const unblockIp = async (ip: string) => {
+    if (!ip || ip === '—') return
+    if (!window.confirm(`¿Desbloquear ${ip} en iptables y firewall?`)) return
+    setBlocking(ip)
+    try {
+      const result = await incidentService.blockIp(profileId, ip, false)
+      await fail2banService.run(profileId, { action: 'unban', ip }).catch(() => null)
+      if (result.ok) {
+        setBlockedIps((current) => current.filter((item) => item !== ip))
+        pushToast('success', result.output || `IP ${ip} desbloqueada`)
       } else {
         pushToast('error', result.output)
       }
@@ -118,6 +154,8 @@ export function useForensicsView(profileId: string) {
     setQuery,
     setRegex,
     setSection,
+    syncBlockedIps,
+    unblockIp,
     uniqueIps,
   }
 }

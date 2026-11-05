@@ -1,15 +1,63 @@
 import {
   AlertIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ClockIcon,
   FolderIcon,
   KeyIcon,
   RefreshIcon,
   SearchIcon,
   ShieldIcon,
+  ShieldOffIcon,
   TerminalIcon,
+  XIcon,
 } from '@/components/Icons'
+import { useMemo, useState } from 'react'
 
 import { useForensicsView } from './useForensicsView'
+
+type AuthSortField = 'timestamp' | 'user' | 'from' | 'method' | 'status'
+type SortDirection = 'asc' | 'desc'
+type StatusFilter = 'all' | 'failed' | 'success' | 'blocked'
+
+const MONTH_MAP: Record<string, number> = {
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
+}
+
+function parseAuthTimestamp(ts: string): number {
+  if (!ts) return 0
+  const iso = Date.parse(ts)
+  if (!isNaN(iso)) return iso
+  const parts = ts.trim().split(/\s+/)
+  if (parts.length >= 3) {
+    const month = MONTH_MAP[parts[0].toLowerCase().slice(0, 3)]
+    const day = parseInt(parts[1], 10)
+    const timeParts = parts[2].split(':').map((x) => parseInt(x, 10))
+    if (month !== undefined && !isNaN(day) && timeParts.length >= 3) {
+      const year = new Date().getFullYear()
+      return new Date(
+        year,
+        month,
+        day,
+        timeParts[0] || 0,
+        timeParts[1] || 0,
+        timeParts[2] || 0,
+      ).getTime()
+    }
+  }
+  return 0
+}
 
 function parseLastDate(raw: string): { date: string; time: string } | null {
   if (!raw || raw === '—' || raw.toLowerCase().includes('logged in')) return null
@@ -52,8 +100,72 @@ export function ForensicsView({ profileId }: { profileId: string }) {
     setQuery,
     setRegex,
     setSection,
+    unblockIp,
     uniqueIps,
   } = useForensicsView(profileId)
+
+  const [authSortField, setAuthSortField] = useState<AuthSortField>('timestamp')
+  const [authSortDir, setAuthSortDir] = useState<SortDirection>('desc')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+
+  const toggleAuthSort = (field: AuthSortField) => {
+    if (authSortField === field) {
+      setAuthSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setAuthSortField(field)
+      setAuthSortDir(field === 'timestamp' ? 'desc' : 'asc')
+    }
+  }
+
+  const failedCount = useMemo(
+    () => attempts.filter((item) => item.status === 'failed').length,
+    [attempts],
+  )
+  const successCount = useMemo(
+    () => attempts.filter((item) => item.status === 'success').length,
+    [attempts],
+  )
+  const blockedAttemptsCount = useMemo(
+    () => attempts.filter((item) => item.from && blockedIps.includes(item.from)).length,
+    [attempts, blockedIps],
+  )
+
+  const processedAttempts = useMemo(() => {
+    const term = filter.trim().toLowerCase()
+    const filtered = attempts.filter((item) => {
+      if (statusFilter === 'failed' && item.status !== 'failed') return false
+      if (statusFilter === 'success' && item.status !== 'success') return false
+      if (statusFilter === 'blocked' && (!item.from || !blockedIps.includes(item.from))) return false
+
+      if (term) {
+        const matches = [item.user, item.from, item.status, item.method, item.detail]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(term)
+        if (!matches) return false
+      }
+      return true
+    })
+
+    return filtered.sort((a, b) => {
+      let cmp = 0
+      if (authSortField === 'timestamp') {
+        const tA = parseAuthTimestamp(a.timestamp)
+        const tB = parseAuthTimestamp(b.timestamp)
+        cmp = tA === tB ? a.timestamp.localeCompare(b.timestamp) : tA - tB
+      } else if (authSortField === 'user') {
+        cmp = (a.user || '').localeCompare(b.user || '')
+      } else if (authSortField === 'from') {
+        cmp = (a.from || '').localeCompare(b.from || '')
+      } else if (authSortField === 'method') {
+        cmp = (a.method || '').localeCompare(b.method || '')
+      } else if (authSortField === 'status') {
+        cmp = (a.status || '').localeCompare(b.status || '')
+      }
+      return authSortDir === 'asc' ? cmp : -cmp
+    })
+  }, [attempts, filter, statusFilter, blockedIps, authSortField, authSortDir])
 
   return (
     <div className="security-view">
@@ -251,21 +363,29 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                     </span>
                     <span className="forensics-actions">
                       {session.from && session.from !== '—' && (
-                        <button
-                          className={`forensics-block-btn ${
-                            blockedIps.includes(session.from) ? 'is-blocked' : ''
-                          }`}
-                          onClick={() => void blockIp(session.from)}
-                          disabled={blocking === session.from || blockedIps.includes(session.from)}
-                          title={`Bloquear ${session.from} en firewall`}
-                        >
-                          <ShieldIcon size={11} />
-                          {blockedIps.includes(session.from)
-                            ? 'Bloqueada'
-                            : blocking === session.from
-                              ? '…'
-                              : 'Bloquear'}
-                        </button>
+                        blockedIps.includes(session.from) ? (
+                          <button
+                            type="button"
+                            className="forensics-block-btn is-unblock"
+                            onClick={() => void unblockIp(session.from)}
+                            disabled={blocking === session.from}
+                            title={`Desbloquear ${session.from}`}
+                          >
+                            <ShieldOffIcon size={11} />
+                            {blocking === session.from ? '…' : 'Desbloquear'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="forensics-block-btn"
+                            onClick={() => void blockIp(session.from)}
+                            disabled={blocking === session.from}
+                            title={`Bloquear ${session.from} en firewall`}
+                          >
+                            <ShieldIcon size={11} />
+                            {blocking === session.from ? '…' : 'Bloquear'}
+                          </button>
+                        )
                       )}
                     </span>
                   </div>
@@ -290,14 +410,54 @@ export function ForensicsView({ profileId }: { profileId: string }) {
             </div>
           )}
           <div className="forensics-toolbar">
+            <div className="forensics-filter-pills">
+              <button
+                type="button"
+                className={`forensics-pill ${statusFilter === 'all' ? 'is-active' : ''}`}
+                onClick={() => setStatusFilter('all')}
+              >
+                Todos <span className="forensics-pill-count">{attempts.length}</span>
+              </button>
+              <button
+                type="button"
+                className={`forensics-pill is-fail ${statusFilter === 'failed' ? 'is-active' : ''}`}
+                onClick={() => setStatusFilter('failed')}
+              >
+                Fallos <span className="forensics-pill-count">{failedCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`forensics-pill is-ok ${statusFilter === 'success' ? 'is-active' : ''}`}
+                onClick={() => setStatusFilter('success')}
+              >
+                Éxitos <span className="forensics-pill-count">{successCount}</span>
+              </button>
+              <button
+                type="button"
+                className={`forensics-pill is-blocked-pill ${statusFilter === 'blocked' ? 'is-active' : ''}`}
+                onClick={() => setStatusFilter('blocked')}
+              >
+                Bloqueadas <span className="forensics-pill-count">{blockedAttemptsCount}</span>
+              </button>
+            </div>
             <div className="db-search forensics-filter">
               <SearchIcon size={13} />
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
-                placeholder="Filtrar por usuario, IP o estado…"
+                placeholder="Filtrar por usuario, IP, método o detalle…"
                 spellCheck={false}
               />
+              {filter && (
+                <button
+                  type="button"
+                  className="ghost-button forensics-search-clear"
+                  onClick={() => setFilter('')}
+                  title="Limpiar filtro"
+                >
+                  <XIcon size={12} />
+                </button>
+              )}
             </div>
             <button className="primary-button" onClick={() => void run('auth')} disabled={loading}>
               <RefreshIcon size={13} className={loading ? 'spin' : ''} />
@@ -309,65 +469,133 @@ export function ForensicsView({ profileId }: { profileId: string }) {
               <h3>
                 <ShieldIcon size={13} /> Intentos de autenticación SSH
               </h3>
-              <span>{attempts.length}</span>
+              <span>
+                {processedAttempts.length}
+                {processedAttempts.length !== attempts.length
+                  ? ` de ${attempts.length}`
+                  : ` (${authIps.length} IPs)`}
+              </span>
             </header>
             <div className="forensics-table forensics-table--auth">
               <div className="forensics-row forensics-row--head">
-                <span>HORA</span>
-                <span>USUARIO</span>
-                <span>ORIGEN</span>
-                <span>MÉTODO</span>
-                <span>ESTADO</span>
-                <span>ACCIÓN</span>
+                <button
+                  type="button"
+                  className={`forensics-sort-btn ${authSortField === 'timestamp' ? 'is-active' : ''}`}
+                  onClick={() => toggleAuthSort('timestamp')}
+                  title="Ordenar por hora"
+                >
+                  <span>HORA</span>
+                  <span className="forensics-sort-indicator">
+                    {authSortField === 'timestamp' ? (
+                      authSortDir === 'asc' ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`forensics-sort-btn ${authSortField === 'user' ? 'is-active' : ''}`}
+                  onClick={() => toggleAuthSort('user')}
+                  title="Ordenar por usuario"
+                >
+                  <span>USUARIO</span>
+                  <span className="forensics-sort-indicator">
+                    {authSortField === 'user' ? (
+                      authSortDir === 'asc' ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`forensics-sort-btn ${authSortField === 'from' ? 'is-active' : ''}`}
+                  onClick={() => toggleAuthSort('from')}
+                  title="Ordenar por IP de origen"
+                >
+                  <span>ORIGEN</span>
+                  <span className="forensics-sort-indicator">
+                    {authSortField === 'from' ? (
+                      authSortDir === 'asc' ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`forensics-sort-btn ${authSortField === 'method' ? 'is-active' : ''}`}
+                  onClick={() => toggleAuthSort('method')}
+                  title="Ordenar por método"
+                >
+                  <span>MÉTODO</span>
+                  <span className="forensics-sort-indicator">
+                    {authSortField === 'method' ? (
+                      authSortDir === 'asc' ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />
+                    ) : null}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`forensics-sort-btn ${authSortField === 'status' ? 'is-active' : ''}`}
+                  onClick={() => toggleAuthSort('status')}
+                  title="Ordenar por estado"
+                >
+                  <span>ESTADO</span>
+                  <span className="forensics-sort-indicator">
+                    {authSortField === 'status' ? (
+                      authSortDir === 'asc' ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />
+                    ) : null}
+                  </span>
+                </button>
+                <span className="forensics-th-label">ACCIÓN</span>
               </div>
-              {attempts
-                .filter((item) =>
-                  [item.user, item.from, item.status, item.method]
-                    .join(' ')
-                    .toLowerCase()
-                    .includes(filter.trim().toLowerCase()),
-                )
-                .map((item, index) => (
-                  <div className="forensics-row" key={`${item.timestamp}-${item.user}-${index}`}>
-                    <span className="mono forensics-dim">{item.timestamp}</span>
-                    <span className={`mono forensics-user ${item.user === 'root' ? 'is-root' : ''}`}>
-                      {item.user || '—'}
+              {processedAttempts.map((item, index) => (
+                <div className="forensics-row" key={`${item.timestamp}-${item.user}-${index}`}>
+                  <span className="mono forensics-dim">{item.timestamp}</span>
+                  <span className={`mono forensics-user ${item.user === 'root' ? 'is-root' : ''}`}>
+                    {item.user || '—'}
+                  </span>
+                  <span className="mono forensics-ip">{item.from || '—'}</span>
+                  <span className="mono forensics-dim">{item.method || '—'}</span>
+                  <span>
+                    <span
+                      className={`forensics-badge ${
+                        item.status === 'success' ? 'is-success' : 'is-failed'
+                      }`}
+                    >
+                      {item.status === 'success' ? 'éxito' : 'fallo'}
                     </span>
-                    <span className="mono forensics-ip">{item.from || '—'}</span>
-                    <span className="mono forensics-dim">{item.method || '—'}</span>
-                    <span>
-                      <span
-                        className={`forensics-badge ${
-                          item.status === 'success' ? 'is-success' : 'is-failed'
-                        }`}
-                      >
-                        {item.status === 'success' ? 'éxito' : 'fallo'}
-                      </span>
-                    </span>
-                    <span className="forensics-actions">
-                      {item.status === 'failed' && item.from && (
+                  </span>
+                  <span className="forensics-actions">
+                    {item.from && item.from !== '—' && (
+                      blockedIps.includes(item.from) ? (
                         <button
-                          className={`forensics-block-btn ${
-                            blockedIps.includes(item.from) ? 'is-blocked' : ''
-                          }`}
+                          type="button"
+                          className="forensics-block-btn is-unblock"
+                          onClick={() => void unblockIp(item.from)}
+                          disabled={blocking === item.from}
+                          title={`Desbloquear IP ${item.from}`}
+                        >
+                          <ShieldOffIcon size={11} />
+                          {blocking === item.from ? '…' : 'Desbloquear'}
+                        </button>
+                      ) : item.status === 'failed' ? (
+                        <button
+                          type="button"
+                          className="forensics-block-btn"
                           onClick={() => void blockIp(item.from)}
-                          disabled={blocking === item.from || blockedIps.includes(item.from)}
-                          title={`Bloquear ${item.from}`}
+                          disabled={blocking === item.from}
+                          title={`Bloquear IP ${item.from}`}
                         >
                           <ShieldIcon size={11} />
-                          {blockedIps.includes(item.from)
-                            ? 'Bloqueada'
-                            : blocking === item.from
-                              ? '…'
-                              : 'Bloquear'}
+                          {blocking === item.from ? '…' : 'Bloquear'}
                         </button>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              {attempts.length === 0 && (
+                      ) : null
+                    )}
+                  </span>
+                </div>
+              ))}
+              {processedAttempts.length === 0 && (
                 <div className="process-table__empty">
-                  Sin intentos en los logs disponibles (auth.log/secure/journalctl).
+                  {attempts.length === 0
+                    ? 'Sin intentos en los logs disponibles (auth.log/secure/journalctl).'
+                    : 'No se encontraron intentos que coincidan con los filtros aplicados.'}
                 </div>
               )}
             </div>

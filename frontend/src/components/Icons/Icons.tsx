@@ -75,6 +75,12 @@ export const ChevronDownIcon = (p: IconProps) => (
   </svg>
 )
 
+export const ChevronUpIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="m18 15-6-6-6 6" />
+  </svg>
+)
+
 export const PlayIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="m7 4 13 8-13 8V4Z" />
@@ -180,6 +186,14 @@ export const EyeOffIcon = (p: IconProps) => (
 export const ShieldIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z" />
+  </svg>
+)
+
+export const ShieldOffIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M19.7 14a6.9 6.9 0 0 0 .3-2V5l-8-3-3.1 1.2" />
+    <path d="M4.7 4.7 4 5v7c0 6 8 10 8 10a20.3 20.3 0 0 0 5.6-4.4" />
+    <line x1="1" y1="1" x2="23" y2="23" />
   </svg>
 )
 
