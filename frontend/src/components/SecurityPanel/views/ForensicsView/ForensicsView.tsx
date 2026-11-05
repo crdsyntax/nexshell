@@ -187,6 +187,7 @@ export function ForensicsView({ profileId }: { profileId: string }) {
             >
               <Icon size={13} />
               {label}
+              {loading[value] && <RefreshIcon size={11} className="spin" />}
             </button>
           ))}
         </div>
@@ -237,7 +238,7 @@ export function ForensicsView({ profileId }: { profileId: string }) {
           <span>{error}</span>
         </div>
       )}
-      {section !== 'sessions' && (
+      {['artifacts', 'search', 'secrets'].includes(section) && (
         <div className="forensics-toolbar">
           <label className="forensics-field">
             <span>ruta</span>
@@ -267,13 +268,17 @@ export function ForensicsView({ profileId }: { profileId: string }) {
               </label>
             </>
           )}
-          <button className="primary-button" onClick={() => void run(section)} disabled={loading}>
+          <button
+            className="primary-button forensics-scan-btn"
+            onClick={() => void run(section)}
+            disabled={loading[section]}
+          >
             {section === 'search' ? (
               <SearchIcon size={13} />
             ) : (
-              <RefreshIcon size={13} className={loading ? 'spin' : ''} />
+              <RefreshIcon size={13} className={loading[section] ? 'spin' : ''} />
             )}
-            {loading ? 'Ejecutando…' : section === 'search' ? 'Buscar' : 'Escanear'}
+            {loading[section] ? 'Ejecutando…' : section === 'search' ? 'Buscar' : 'Escanear'}
           </button>
         </div>
       )}
@@ -289,9 +294,13 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                 spellCheck={false}
               />
             </div>
-            <button className="primary-button" onClick={() => void run('sessions')} disabled={loading}>
-              <RefreshIcon size={13} className={loading ? 'spin' : ''} />
-              {loading ? 'Leyendo…' : 'Actualizar'}
+            <button
+              className="primary-button"
+              onClick={() => void run('sessions')}
+              disabled={loading.sessions}
+            >
+              <RefreshIcon size={13} className={loading.sessions ? 'spin' : ''} />
+              {loading.sessions ? 'Leyendo…' : 'Actualizar'}
             </button>
           </div>
           <div className="network-block">
@@ -459,9 +468,9 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                 </button>
               )}
             </div>
-            <button className="primary-button" onClick={() => void run('auth')} disabled={loading}>
-              <RefreshIcon size={13} className={loading ? 'spin' : ''} />
-              {loading ? 'Leyendo…' : 'Actualizar'}
+            <button className="primary-button" onClick={() => void run('auth')} disabled={loading.auth}>
+              <RefreshIcon size={13} className={loading.auth ? 'spin' : ''} />
+              {loading.auth ? 'Leyendo…' : 'Actualizar'}
             </button>
           </div>
           <div className="network-block">

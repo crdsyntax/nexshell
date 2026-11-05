@@ -79,6 +79,7 @@ vi.mock('@/services/incident.service', () => ({
 }))
 
 import { fail2banService } from '@/services/fail2ban.service'
+import { forensicsService } from '@/services/forensics.service'
 import { incidentService } from '@/services/incident.service'
 import { ForensicsView } from '../views/ForensicsView'
 
@@ -172,6 +173,39 @@ describe('ForensicsView', () => {
     expect(window.confirm).toHaveBeenCalled()
     await waitFor(() => {
       expect(incidentService.blockIp).toHaveBeenCalledWith('p1', '115.190.229.117', true)
+    })
+  })
+
+  it('mantiene estados de carga independientes entre pestañas', async () => {
+    let resolveSecrets!: (val: unknown) => void
+    const secretsPromise = new Promise((resolve) => {
+      resolveSecrets = resolve
+    })
+    vi.mocked(forensicsService.secrets).mockImplementationOnce(() => secretsPromise as never)
+
+    render(<ForensicsView profileId="p1" />)
+    // Esperar a que la carga inicial de sesiones termine
+    expect(await screen.findByRole('button', { name: /Actualizar/i })).toBeInTheDocument()
+
+    // Cambiar a Secretos y pulsar Escanear
+    fireEvent.click(screen.getByText('Secretos'))
+    const scanBtn = screen.getByRole('button', { name: /Escanear/i })
+    fireEvent.click(scanBtn)
+
+    // El botón de Secretos pasa a estar en ejecución
+    expect(screen.getByRole('button', { name: /Ejecutando…/i })).toBeDisabled()
+
+    // Cambiar a Sesiones SSH: su botón Actualizar no debe estar bloqueado ni cargando
+    fireEvent.click(screen.getByText('Sesiones SSH'))
+    const refreshSessionsBtn = screen.getByRole('button', { name: /Actualizar/i })
+    expect(refreshSessionsBtn).not.toBeDisabled()
+    expect(refreshSessionsBtn).not.toHaveTextContent('Leyendo…')
+
+    // Resolver la promesa de secretos
+    resolveSecrets([])
+    await waitFor(() => {
+      fireEvent.click(screen.getByText('Secretos'))
+      expect(screen.getByRole('button', { name: /Escanear/i })).not.toBeDisabled()
     })
   })
 })

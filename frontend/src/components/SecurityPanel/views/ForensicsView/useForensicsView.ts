@@ -19,7 +19,13 @@ export function useForensicsView(profileId: string) {
   const [query, setQuery] = useState('')
   const [regex, setRegex] = useState(false)
   const [filter, setFilter] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<Record<ForensicsSection, boolean>>({
+    sessions: false,
+    auth: false,
+    artifacts: false,
+    search: false,
+    secrets: false,
+  })
   const [error, setError] = useState<string | null>(null)
   const [blockedIps, setBlockedIps] = useState<string[]>([])
   const [blocking, setBlocking] = useState<string | null>(null)
@@ -37,7 +43,7 @@ export function useForensicsView(profileId: string) {
 
   const run = useCallback(
     async (target: ForensicsSection) => {
-      setLoading(true)
+      setLoading((prev) => ({ ...prev, [target]: true }))
       setError(null)
       try {
         if (target === 'sessions') setSessions(await forensicsService.sessions(profileId))
@@ -59,7 +65,7 @@ export function useForensicsView(profileId: string) {
         setError(message)
         pushToast('error', message)
       } finally {
-        setLoading(false)
+        setLoading((prev) => ({ ...prev, [target]: false }))
       }
     },
     [profileId, path, query, regex, pushToast, syncBlockedIps],

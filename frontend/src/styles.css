@@ -8239,10 +8239,22 @@ body {
 
 .forensics-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+}
+
+.forensics-toolbar .primary-button {
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 16px;
+  min-width: 108px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .forensics-stats {
@@ -8251,6 +8263,7 @@ body {
   gap: 8px;
   margin-left: auto;
   flex-wrap: wrap;
+  align-self: center;
 }
 
 .forensics-stat-pill {
@@ -8314,6 +8327,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  line-height: 1.2;
 }
 
 .forensics-field input {
@@ -8325,6 +8339,7 @@ body {
   font-family: var(--mono);
   font-size: 11px;
   min-width: 180px;
+  box-sizing: border-box;
 }
 
 .forensics-field--grow {
@@ -8345,11 +8360,15 @@ body {
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .forensics-filter {
   flex: 1;
   max-width: 420px;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .forensics-table {
@@ -8612,6 +8631,8 @@ body.theme-dark .forensics-block-btn.is-unblock:hover:not(:disabled),
   align-items: center;
   gap: 5px;
   flex-wrap: wrap;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .forensics-pill {
