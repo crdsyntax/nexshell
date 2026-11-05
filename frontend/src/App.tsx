@@ -14,6 +14,7 @@ import { FirewallPanel } from '@/components/FirewallPanel'
 import { ConnectionModal } from '@/components/ConnectionModal'
 import { ShareConnectionModal } from '@/components/Sharing/ShareConnectionModal'
 import { ImportShareModal } from '@/components/Sharing/ImportShareModal'
+import { UpdateModal } from '@/components/update/UpdateModal'
 import { EmptyState } from '@/components/EmptyState'
 import { Toasts } from '@/components/Toasts'
 import { useAppStore } from '@/store/useAppStore'
@@ -298,6 +299,7 @@ export default function App() {
         onClose={closeImportModal}
         onEditProfile={openEdit}
       />
+      <UpdateModal />
       <Toasts />
     </div>
   )

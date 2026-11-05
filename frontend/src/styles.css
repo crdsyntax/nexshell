@@ -11053,3 +11053,234 @@ button {
   align-items: center;
   gap: 6px;
 }
+
+/* -------------------------- update modal -------------------------- */
+
+.update-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  padding: 16px;
+}
+
+.update-modal-card {
+  width: 500px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.update-modal-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(21, 112, 239, 0.08) 0%, transparent 60%);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.update-modal-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(21, 112, 239, 0.12);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.update-modal-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.update-modal-header-text h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.update-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  transition: color 120ms ease;
+}
+
+.update-modal-close:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.update-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.update-version-comparison {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-ver-box {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft, #f8fafc);
+  text-align: center;
+}
+
+.update-ver-box.is-new {
+  border-color: rgba(21, 112, 239, 0.35);
+  background: rgba(21, 112, 239, 0.05);
+}
+
+.update-ver-label {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.update-ver-box.is-new .update-ver-label {
+  color: var(--accent);
+}
+
+.update-ver-val {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.update-ver-box.is-new .update-ver-val {
+  color: var(--accent);
+}
+
+.update-ver-arrow {
+  color: var(--muted-2);
+  font-size: 18px;
+}
+
+.update-pub-date {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.update-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.update-notes-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.update-notes-content {
+  font-size: 11.5px;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.update-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.update-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.update-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border-soft);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 150ms ease;
+}
+
+.update-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+  background: #f8fafc;
+}
+
+body.theme-dark .update-modal-card,
+[data-theme='dark'] .update-modal-card {
+  background: var(--panel);
+}
+
+body.theme-dark .update-modal-footer,
+[data-theme='dark'] .update-modal-footer,
+body.theme-dark .update-notes,
+[data-theme='dark'] .update-notes,
+body.theme-dark .update-ver-box,
+[data-theme='dark'] .update-ver-box {
+  background: rgba(255, 255, 255, 0.03);
+}
