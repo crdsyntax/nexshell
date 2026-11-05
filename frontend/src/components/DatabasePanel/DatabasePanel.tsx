@@ -44,11 +44,27 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
 
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [engine, setEngine] = useState<'mysql' | 'mongodb'>('mysql')
+  const [authDb, setAuthDb] = useState('admin')
   const [authUser, setAuthUser] = useState(profile?.dbTarget?.user ?? 'root')
   const [authPassword, setAuthPassword] = useState('')
   const [authHost, setAuthHost] = useState(profile?.dbTarget?.host ?? 'localhost')
   const [authPort, setAuthPort] = useState(String(profile?.dbTarget?.port ?? 3306))
   const [showAuthPassword, setShowAuthPassword] = useState(false)
+
+  const selectEngine = (next: 'mysql' | 'mongodb') => {
+    setEngine(next)
+    setError(null)
+    if (next === 'mongodb') {
+      if (authUser === 'root' || !authUser) setAuthUser('admin')
+      if (authPort === '3306' || !authPort) setAuthPort('27017')
+      if (authHost === 'localhost' || !authHost) setAuthHost('127.0.0.1')
+    } else {
+      if (authUser === 'admin' || !authUser) setAuthUser('root')
+      if (authPort === '27017' || !authPort) setAuthPort('3306')
+      if (authHost === '127.0.0.1' || !authHost) setAuthHost('localhost')
+    }
+  }
 
   const [passwordTarget, setPasswordTarget] = useState<DbUser | null>(null)
   const [password, setPassword] = useState('')
@@ -68,12 +84,14 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
 
   const auth = useCallback(
     (): DbAuth => ({
-      user: authUser.trim() || 'root',
+      user: authUser.trim() || (engine === 'mongodb' ? 'admin' : 'root'),
       password: authPassword,
-      host: authHost.trim() || 'localhost',
-      port: Number(authPort) || 3306,
+      host: authHost.trim() || (engine === 'mongodb' ? '127.0.0.1' : 'localhost'),
+      port: Number(authPort) || (engine === 'mongodb' ? 27017 : 3306),
+      engine,
+      authDb: engine === 'mongodb' ? (authDb.trim() || 'admin') : undefined,
     }),
-    [authUser, authPassword, authHost, authPort],
+    [authUser, authPassword, authHost, authPort, engine, authDb],
   )
 
   const load = useCallback(
@@ -315,10 +333,30 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
       {!connected && (
         <section className="db-connect">
           <header>
+            <div className="db-engine-tabs">
+              <button
+                type="button"
+                className={`db-engine-tab ${engine === 'mysql' ? 'is-active' : ''}`}
+                onClick={() => selectEngine('mysql')}
+              >
+                MariaDB / MySQL
+              </button>
+              <button
+                type="button"
+                className={`db-engine-tab ${engine === 'mongodb' ? 'is-active' : ''}`}
+                onClick={() => selectEngine('mongodb')}
+              >
+                MongoDB
+              </button>
+            </div>
             <h3>
-              <DatabaseIcon size={14} /> Conectar a MariaDB / MySQL
+              <DatabaseIcon size={14} /> Conectar a {engine === 'mongodb' ? 'MongoDB' : 'MariaDB / MySQL'}
             </h3>
-            <p>Introduce la contraseña para detectar el motor y listar usuarios.</p>
+            <p>
+              {engine === 'mongodb'
+                ? 'Introduce la contraseña y base de autenticación para listar usuarios de MongoDB.'
+                : 'Introduce la contraseña para detectar el motor y listar usuarios.'}
+            </p>
           </header>
           <form
             className="db-connect__form"
@@ -356,12 +394,23 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
                 </button>
               </div>
             </label>
+            {engine === 'mongodb' && (
+              <label className="field">
+                <span>Auth DB</span>
+                <input
+                  value={authDb}
+                  onChange={(event) => setAuthDb(event.target.value)}
+                  placeholder="admin"
+                  spellCheck={false}
+                />
+              </label>
+            )}
             <label className="field">
               <span>Host</span>
               <input
                 value={authHost}
                 onChange={(event) => setAuthHost(event.target.value)}
-                placeholder="localhost"
+                placeholder={engine === 'mongodb' ? '127.0.0.1' : 'localhost'}
                 spellCheck={false}
               />
             </label>
@@ -382,7 +431,15 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
             </button>
           </form>
           <p className="field-hint">
-            <code>localhost</code> usa el socket; <code>127.0.0.1</code> fuerza TCP.
+            {engine === 'mongodb' ? (
+              <>
+                MongoDB autentica contra una base de datos (por defecto <code>admin</code>) y requiere <code>mongosh</code> en el servidor.
+              </>
+            ) : (
+              <>
+                <code>localhost</code> usa el socket; <code>127.0.0.1</code> fuerza TCP.
+              </>
+            )}
           </p>
         </section>
       )}
@@ -390,7 +447,8 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
       {connected && (
         <div className="db-session">
           <span className="mono">
-            <CheckIcon size={14} /> {authUser}@{authHost}:{authPort}
+            <CheckIcon size={14} /> {engine === 'mongodb' ? 'MongoDB ' : ''}{authUser}@{authHost}:{authPort}
+            {engine === 'mongodb' && authDb ? ` (auth: ${authDb})` : ''}
           </span>
           <button className="ghost-button" onClick={disconnect}>
             Desconectar
@@ -431,7 +489,7 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter users, hosts or plugins…"
+            placeholder={engine === 'mongodb' ? 'Filter users, databases or roles…' : 'Filter users, hosts or plugins…'}
             spellCheck={false}
           />
         </div>
@@ -447,16 +505,17 @@ export function DatabasePanel({ profileId }: DatabasePanelProps) {
           <DatabaseIcon size={22} />
           <strong>No database users returned</strong>
           <p>
-            La conexión funcionó, pero la consulta a <code>mysql.user</code> no devolvió
-            cuentas.
+            {engine === 'mongodb'
+              ? 'La conexión funcionó, pero no se devolvieron usuarios de MongoDB.'
+              : 'La conexión funcionó, pero la consulta a mysql.user no devolvió cuentas.'}
           </p>
         </div>
       ) : (
         <div className="db-user-table">
           <div className="db-user-row db-user-row--head">
             <span>USER</span>
-            <span>HOST</span>
-            <span>PLUGIN</span>
+            <span>{engine === 'mongodb' ? 'AUTH DB' : 'HOST'}</span>
+            <span>{engine === 'mongodb' ? 'ROLES' : 'PLUGIN'}</span>
             <span>ACTIONS</span>
           </div>
           {filteredUsers.map((user) => (

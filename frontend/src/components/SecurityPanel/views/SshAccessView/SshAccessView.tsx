@@ -1,16 +1,65 @@
-import { AlertIcon, KeyIcon, PlusIcon, RefreshIcon, TrashIcon, XIcon } from '@/components/Icons'
+import {
+  AlertIcon,
+  CheckIcon,
+  CopyIcon,
+  KeyIcon,
+  PlusIcon,
+  RefreshIcon,
+  ShieldIcon,
+  TerminalIcon,
+  TrashIcon,
+  XIcon,
+} from '@/components/Icons'
+import type { SshKey } from '@/types'
+import { useState } from 'react'
 
 import { useSshAccessView } from './useSshAccessView'
 
 export function SshAccessView({ profileId }: { profileId: string }) {
-  const { acknowledged, addOpen, addResult, adding, changeAccess, changing, config, confirmMode, error, keyUser, keys, load, loading, passwordAuth, publicKey, removeKey, setAcknowledged, setAddOpen, setAddResult, setConfirmMode, setKeyUser, setPublicKey, submitKey } = useSshAccessView(profileId)
+  const {
+    acknowledged,
+    addOpen,
+    addResult,
+    adding,
+    changeAccess,
+    changing,
+    config,
+    confirmMode,
+    error,
+    keyUser,
+    keys,
+    load,
+    loading,
+    passwordAuth,
+    publicKey,
+    removeKey,
+    setAcknowledged,
+    setAddOpen,
+    setAddResult,
+    setConfirmMode,
+    setKeyUser,
+    setPublicKey,
+    submitKey,
+  } = useSshAccessView(profileId)
 
+  const [copiedFingerprint, setCopiedFingerprint] = useState<string | null>(null)
+
+  const handleCopyFingerprint = async (key: SshKey) => {
+    try {
+      await navigator.clipboard.writeText(key.fingerprint)
+      setCopiedFingerprint(key.fingerprint)
+      setTimeout(() => setCopiedFingerprint(null), 2000)
+    } catch {
+      // ignore
+    }
+  }
 
   return (
     <div className="security-view">
       <div className="security-toolbar">
         <button className="top-action" onClick={() => void load()} disabled={loading}>
-          <RefreshIcon size={13} className={loading ? 'spin' : ''} /> Refresh
+          <RefreshIcon size={13} className={loading ? 'spin' : ''} />
+          {loading ? 'Leyendo política…' : 'Refresh'}
         </button>
         <button
           className="primary-button"
@@ -30,7 +79,10 @@ export function SshAccessView({ profileId }: { profileId: string }) {
             {passwordAuth ? 'Disable password authentication' : 'Restore password authentication'}
           </button>
         )}
-        <span className="security-meta">public keys only · no private material stored</span>
+        <span className="security-meta">
+          <ShieldIcon size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+          public keys only · no private material stored
+        </span>
       </div>
 
       {error && (
@@ -67,9 +119,15 @@ export function SshAccessView({ profileId }: { profileId: string }) {
         </>
       )}
 
-      <div className="db-toolbar">
-        <h3 className="ssh-section-title">Authorized keys</h3>
-        <span className="db-count">{keys.length} keys</span>
+      <div className="ssh-header-bar">
+        <h3 className="ssh-section-title">
+          <KeyIcon size={15} /> Authorized keys
+        </h3>
+        <div className="forensics-stats">
+          <span className="forensics-stat-pill">
+            <strong>{keys.length}</strong> {keys.length === 1 ? 'clave' : 'claves'}
+          </span>
+        </div>
       </div>
 
       <div className="ssh-key-table">
@@ -77,29 +135,66 @@ export function SshAccessView({ profileId }: { profileId: string }) {
           <span>USER</span>
           <span>TYPE / FINGERPRINT</span>
           <span>COMMENT</span>
-          <span>ACTIONS</span>
+          <span style={{ textAlign: 'right' }}>ACTIONS</span>
         </div>
-        {keys.map((key) => (
-          <div className="ssh-key-row" key={`${key.user}-${key.fingerprint}-${key.raw}`}>
-            <span className="mono">{key.user}</span>
-            <span className="ssh-key-fingerprint">
-              <span className="db-plugin">{key.keyType}</span>
-              <span className="mono">{key.fingerprint}</span>
-            </span>
-            <span className="ssh-key-comment" title={key.comment}>
-              {key.comment || '—'}
-            </span>
-            <div className="db-user-actions">
-              <button
-                className="icon-button is-danger"
-                title="Remove key"
-                onClick={() => void removeKey(key)}
+        {keys.map((key) => {
+          const isEd25519 = key.keyType.toLowerCase().includes('ed25519')
+          const isRsa = key.keyType.toLowerCase().includes('rsa')
+          const isEmail = key.comment.includes('@')
+          const isCopied = copiedFingerprint === key.fingerprint
+
+          return (
+            <div className="ssh-key-row" key={`${key.user}-${key.fingerprint}-${key.raw}`}>
+              <span
+                className={`mono ssh-user-tag ${key.user === 'root' ? 'is-root' : ''}`}
+                title={key.path || key.user}
               >
-                <TrashIcon size={14} />
-              </button>
+                <KeyIcon size={12} style={{ color: 'var(--muted-2)' }} />
+                {key.user}
+              </span>
+              <div className="ssh-key-fingerprint-cell">
+                <div className="ssh-key-fingerprint-line">
+                  <span
+                    className={`ssh-algo-badge ${
+                      isEd25519 ? 'is-ed25519' : isRsa ? 'is-rsa' : ''
+                    }`}
+                  >
+                    {isEd25519 ? 'ED25519' : isRsa ? 'RSA' : key.keyType}
+                  </span>
+                  <span className="mono ssh-fingerprint-text" title={key.fingerprint}>
+                    {key.fingerprint}
+                  </span>
+                  <button
+                    className="ssh-copy-btn"
+                    onClick={() => void handleCopyFingerprint(key)}
+                    title={isCopied ? '¡Copiado!' : 'Copiar huella digital (SHA256)'}
+                  >
+                    {isCopied ? (
+                      <CheckIcon size={12} style={{ color: 'var(--ok)' }} />
+                    ) : (
+                      <CopyIcon size={12} />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <span
+                className={`ssh-key-comment-cell ${isEmail ? 'is-email' : ''}`}
+                title={key.comment}
+              >
+                {key.comment || '—'}
+              </span>
+              <div className="db-user-actions" style={{ justifyContent: 'flex-end' }}>
+                <button
+                  className="icon-button is-danger"
+                  title="Remove key"
+                  onClick={() => void removeKey(key)}
+                >
+                  <TrashIcon size={14} />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {keys.length === 0 && (
           <div className="large-files-empty">
             <KeyIcon size={22} />
@@ -150,9 +245,7 @@ export function SshAccessView({ profileId }: { profileId: string }) {
               <p className="field-hint">
                 Only public keys. The private key never leaves your workstation.
               </p>
-              {addResult && (
-                <pre className="ssh-config-output">{addResult}</pre>
-              )}
+              {addResult && <pre className="ssh-config-output">{addResult}</pre>}
             </div>
             <footer className="modal__footer">
               <button
@@ -249,6 +342,71 @@ export function SshAccessView({ profileId }: { profileId: string }) {
   )
 }
 
+function getPolicyConfig(label: string, value: string, good?: boolean) {
+  const normalized = value.toLowerCase().trim()
+  if (label === 'Pubkey authentication') {
+    const isYes = normalized === 'yes'
+    return {
+      icon: <KeyIcon size={14} />,
+      badgeClass: isYes ? 'is-secure' : 'is-danger',
+      badgeText: isYes ? 'Habilitada' : 'Deshabilitada',
+      sub: 'Criptografía asimétrica',
+    }
+  }
+  if (label === 'Password authentication') {
+    const isNo = normalized === 'no'
+    return {
+      icon: <ShieldIcon size={14} />,
+      badgeClass: isNo ? 'is-secure' : 'is-warning',
+      badgeText: isNo ? 'Bloqueada (segura)' : 'Permitida (vulnerable)',
+      sub: 'Protección fuerza bruta',
+    }
+  }
+  if (label === 'Keyboard interactive') {
+    const isNo = normalized === 'no'
+    return {
+      icon: <TerminalIcon size={14} />,
+      badgeClass: isNo ? 'is-secure' : 'is-warning',
+      badgeText: isNo ? 'Desactivada' : 'Activa',
+      sub: 'Desafío / respuesta PAM',
+    }
+  }
+  if (label === 'Permit root login') {
+    const isKeyOnly = normalized === 'without-password' || normalized === 'prohibit-password'
+    const isNo = normalized === 'no'
+    return {
+      icon: <ShieldIcon size={14} />,
+      badgeClass: isKeyOnly ? 'is-info' : isNo ? 'is-secure' : 'is-danger',
+      badgeText: isKeyOnly ? 'Solo con clave' : isNo ? 'Denegado' : 'Sin restricción',
+      sub: 'Acceso directo superusuario',
+    }
+  }
+  if (label === 'sshd -t') {
+    const isValid = good ?? normalized === 'valid'
+    return {
+      icon: <CheckIcon size={14} />,
+      badgeClass: isValid ? 'is-secure' : 'is-danger',
+      badgeText: isValid ? 'Sintaxis válida' : 'Fallo en sintaxis',
+      sub: 'Validación del demonio sshd',
+    }
+  }
+  if (label === '2Shell drop-in') {
+    const isPresent = good ?? normalized === 'present'
+    return {
+      icon: <KeyIcon size={14} />,
+      badgeClass: isPresent ? 'is-info' : 'is-neutral',
+      badgeText: isPresent ? 'Activo (drop-in)' : 'Ausente',
+      sub: '00-2shell-key-only.conf',
+    }
+  }
+  return {
+    icon: <ShieldIcon size={14} />,
+    badgeClass: good ? 'is-secure' : 'is-neutral',
+    badgeText: value,
+    sub: '',
+  }
+}
+
 function ConfigCard({
   label,
   value,
@@ -258,12 +416,23 @@ function ConfigCard({
   value: string
   good?: boolean
 }) {
+  const policy = getPolicyConfig(label, value, good)
+
   return (
-    <div className="db-info-card">
-      <span>{label}</span>
-      <strong className={good === undefined ? '' : good ? 'is-ok' : 'is-critical'}>
-        {value}
-      </strong>
+    <div className="ssh-card">
+      <div className="ssh-card__header">
+        <span className="ssh-card__icon">{policy.icon}</span>
+        <span className="ssh-card__label">{label}</span>
+      </div>
+      <div className="ssh-card__body">
+        <span className={`ssh-policy-badge ${policy.badgeClass}`}>
+          {policy.badgeClass === 'is-secure' && <CheckIcon size={10} />}
+          {policy.badgeClass === 'is-warning' && <AlertIcon size={10} />}
+          {policy.badgeClass === 'is-danger' && <AlertIcon size={10} />}
+          {policy.badgeText}
+        </span>
+      </div>
+      {policy.sub && <div className="ssh-card__sub">{policy.sub}</div>}
     </div>
   )
 }

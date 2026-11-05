@@ -35,6 +35,8 @@ export const databaseService = {
     password: string,
     port: number,
     database: string,
+    engine?: 'mysql' | 'mariadb' | 'mongodb',
+    authDb?: string,
   ) =>
     ipc.invoke<DbLoginTest>('database_test_login', {
       profileId,
@@ -43,5 +45,7 @@ export const databaseService = {
       password,
       port,
       database,
+      engine,
+      authDb,
     }),
 }

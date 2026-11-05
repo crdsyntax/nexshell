@@ -1,28 +1,63 @@
-import { AlertIcon, CheckIcon, ShieldIcon, TrashIcon, XIcon } from '@/components/Icons'
+import {
+  AlertIcon,
+  CheckIcon,
+  KeyIcon,
+  RefreshIcon,
+  SearchIcon,
+  ShieldIcon,
+  TrashIcon,
+  XIcon,
+} from '@/components/Icons'
 
 import { useSudoersView } from './useSudoersView'
 
 export function SudoersView({ profileId }: { profileId: string }) {
-  const { actionError, apply, busy, error, load, loading, nopasswd, openOrigin, origin, originError, originLoading, originUser, privilegedUsers, report, setActionError, setOrigin, setOriginUser, setTarget, target } = useSudoersView(profileId)
-
+  const {
+    actionError,
+    apply,
+    busy,
+    error,
+    load,
+    loading,
+    nopasswd,
+    openOrigin,
+    origin,
+    originError,
+    originLoading,
+    originUser,
+    privilegedUsers,
+    report,
+    setActionError,
+    setOrigin,
+    setOriginUser,
+    setTarget,
+    target,
+  } = useSudoersView(profileId)
 
   return (
     <div className="security-view">
       <div className="sec-toolbar">
         <button className="primary-button" onClick={() => void load()} disabled={loading}>
-          <ShieldIcon size={13} className={loading ? 'spin' : ''} />
+          <RefreshIcon size={13} className={loading ? 'spin' : ''} />
           {loading ? 'Leyendo sudoers…' : 'Leer sudoers'}
         </button>
         {report && (
           <>
             <span className={`sec-status ${report.configOk ? 'is-ok' : 'is-bad'}`}>
-              {report.configOk ? <CheckIcon size={11} /> : <AlertIcon size={11} />}
+              {report.configOk ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
               visudo -c: {report.configOk ? 'syntax valid' : 'errors'}
             </span>
-            <span className="sec-toolbar__meta">
-              {report.rules.length} REGLAS ACTIVAS · {nopasswd} CON NOPASSWD ·{' '}
-              {report.accounts.length} CUENTAS REGISTRADAS
-            </span>
+            <div className="forensics-stats">
+              <span className="forensics-stat-pill">
+                <strong>{report.rules.length}</strong> reglas activas
+              </span>
+              <span className={`forensics-stat-pill ${nopasswd > 0 ? 'is-warning' : ''}`}>
+                <strong>{nopasswd}</strong> sin contraseña
+              </span>
+              <span className="forensics-stat-pill">
+                <strong>{report.accounts.length}</strong> cuentas
+              </span>
+            </div>
           </>
         )}
       </div>
@@ -39,11 +74,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
           {nopasswd > 0 && (
             <div className="risk-banner">
               <span className="risk-banner__icon">
-                <AlertIcon size={15} />
+                <AlertIcon size={16} />
               </span>
               <div className="risk-banner__body">
                 <strong>
-                  Exposición crítica: {nopasswd} regla(s) permiten sudo sin contraseña
+                  Exposición crítica: {nopasswd} regla{nopasswd === 1 ? '' : 's'} permiten sudo sin contraseña
                 </strong>
                 <p>
                   Revisa que cada regla esté limitada al comando exacto necesario. Una regla
@@ -64,184 +99,200 @@ export function SudoersView({ profileId }: { profileId: string }) {
           )}
 
           <div className="sudoers-grid">
-          <div className="sudoers-col">
-          <section className="network-block">
-            <header>
-              <h3><ShieldIcon size={12} /> Grupos con privilegios</h3>
-              <span>{privilegedUsers.length} usuarios</span>
-            </header>
-            <div className="sudoers-table">
-              <div className="sudoers-row sudoers-row--head">
-                <span>GRUPO</span>
-                <span>GID</span>
-                <span>MIEMBROS</span>
-              </div>
-              {report.groups.map((group) => (
-                <div className="sudoers-row" key={group.name}>
-                  <span className="mono">{group.name}</span>
-                  <span className="mono">{group.gid}</span>
-                  <span className="mono sudoers-members">
-                    {group.members.length > 0 ? group.members.join(', ') : '—'}
-                  </span>
-                </div>
-              ))}
-              {report.groups.length === 0 && (
-                <div className="process-table__empty">
-                  No se encontraron grupos wheel/sudo/admin.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="network-block">
-            <header>
-              <h3>Cuentas referenciadas</h3>
-              <span>{report.accounts.length}</span>
-            </header>
-            <div className="sudoers-table sudoers-table--accounts">
-              <div className="sudoers-row sudoers-row--head">
-                <span>USUARIO</span>
-                <span>UID</span>
-                <span>SHELL</span>
-                <span>PASSWORD</span>
-                <span>ÚLTIMO LOGIN</span>
-                <span>CLAVES</span>
-                <span>ACCIONES</span>
-              </div>
-              {report.accounts.map((account) => (
-                <div className="sudoers-row" key={account.user}>
-                  <span className="mono sudoers-user" title={account.home || account.user}>
-                    {account.user}
-                    {!account.exists ? (
-                      <span className="sudoers-orphan">NO EXISTE</span>
-                    ) : (
-                      <span
-                        className={`sudoers-state ${
-                          account.passwordStatus === 'L' ? 'is-locked' : 'is-active'
-                        }`}
-                      >
-                        {account.passwordStatus === 'L' ? 'BLOQUEADA' : 'ACTIVO'}
+            <div className="sudoers-col">
+              <section className="network-block">
+                <header>
+                  <h3>
+                    <ShieldIcon size={13} /> Grupos con privilegios
+                  </h3>
+                  <span>{privilegedUsers.length} usuarios</span>
+                </header>
+                <div className="sudoers-table">
+                  <div className="sudoers-row sudoers-row--head">
+                    <span>GRUPO</span>
+                    <span>GID</span>
+                    <span>MIEMBROS</span>
+                  </div>
+                  {report.groups.map((group) => (
+                    <div className="sudoers-row" key={group.name}>
+                      <span className="mono sudoers-principal-group">{group.name}</span>
+                      <span className="mono">{group.gid}</span>
+                      <span className="mono sudoers-members">
+                        {group.members.length > 0 ? group.members.join(', ') : '—'}
                       </span>
-                    )}
-                  </span>
-                  <span className="mono">{account.uid || '—'}</span>
-                  <span className="mono sudoers-ellipsis" title={account.shell}>
-                    {account.shell || '—'}
-                  </span>
-                  <span className="mono">
-                    {account.passwordStatus === 'P'
-                      ? 'activa'
-                      : account.passwordStatus === 'L'
-                        ? 'bloqueada'
-                        : account.passwordStatus === 'NP'
-                          ? 'sin clave'
-                          : account.passwordStatus || '—'}
-                  </span>
-                  <span className="mono sudoers-ellipsis" title={account.lastLogin}>
-                    {account.lastLogin || '—'}
-                  </span>
-                  <span className="mono">{account.authorizedKeys}</span>
-                  <span className="sudoers-account-actions">
-                    <button
-                      className="top-action"
-                      title="Ver quién creó la cuenta, desde qué IP y cuándo"
-                      onClick={() => void openOrigin(account.user)}
-                      disabled={busy}
-                    >
-                      Origen
-                    </button>
-                    {account.exists && account.user !== 'root' && (
-                      <button
-                        className={
-                          account.passwordStatus === 'L'
-                            ? 'top-action'
-                            : 'danger-outline-button'
-                        }
-                        onClick={() => {
-                          setActionError(null)
-                          setTarget({
-                            kind: account.passwordStatus === 'L' ? 'unlock' : 'lock',
-                            account,
-                          })
-                        }}
-                        disabled={busy}
-                      >
-                        {account.passwordStatus === 'L' ? 'Desbloquear' : 'Bloquear'}
-                      </button>
-                    )}
-                  </span>
+                    </div>
+                  ))}
+                  {report.groups.length === 0 && (
+                    <div className="process-table__empty">
+                      No se encontraron grupos wheel/sudo/admin.
+                    </div>
+                  )}
                 </div>
-              ))}
-              {report.accounts.length === 0 && (
-                <div className="process-table__empty">Sin cuentas referenciadas.</div>
-              )}
-            </div>
-          </section>
-          </div>
+              </section>
 
-          <div className="sudoers-col sudoers-rules">
-          <section className="network-block">
-            <header>
-              <h3><ShieldIcon size={12} /> Reglas de sudoers (/etc/sudoers)</h3>
-              <span>{report.rules.length}</span>
-            </header>
-            <div className="sudoers-table sudoers-table--rules">
-              <div className="sudoers-row sudoers-row--head">
-                <span>USUARIO</span>
-                <span>HOST</span>
-                <span>RUNAS</span>
-                <span>COMANDOS</span>
-                <span>ORIGEN</span>
-                <span>ACCIONES</span>
-              </div>
-              {report.rules.map((rule, index) => (
-                <div className="sudoers-row" key={`${rule.source}-${rule.principal}-${index}`}>
-                  <span className="mono sudoers-user">
-                    {rule.principal}
-                    {rule.nopasswd && <span className="sudoers-badge">NOPASSWD</span>}
-                  </span>
-                  <span className="mono">{rule.host}</span>
-                  <span className="mono">{rule.runas || '—'}</span>
-                  <span className="mono sudoers-commands" title={rule.commands}>
-                    {rule.commands}
-                  </span>
-                  <span className="mono sudoers-source" title={rule.source}>
-                    {rule.source}
-                  </span>
-                  <span className="sudoers-account-actions">
-                    <button
-                      className="icon-button is-danger"
-                      title="Eliminar esta regla (con backup y visudo -c)"
-                      onClick={() => {
-                        setActionError(null)
-                        setTarget({
-                          kind: 'rule',
-                          source: rule.source,
-                          raw: rule.raw,
-                          principal: rule.principal,
-                        })
-                      }}
-                      disabled={busy}
-                    >
-                      <TrashIcon size={13} />
-                    </button>
+              <section className="network-block">
+                <header>
+                  <h3>
+                    <ShieldIcon size={13} /> Cuentas referenciadas
+                  </h3>
+                  <span>{report.accounts.length}</span>
+                </header>
+                <div className="sudoers-table sudoers-table--accounts">
+                  <div className="sudoers-row sudoers-row--head">
+                    <span>USUARIO</span>
+                    <span>UID</span>
+                    <span>SHELL</span>
+                    <span>CLAVES</span>
+                    <span style={{ textAlign: 'right' }}>ACCIONES</span>
+                  </div>
+                  {report.accounts.map((account) => (
+                    <div className="sudoers-row" key={account.user}>
+                      <span className="mono sudoers-user" title={account.home || account.user}>
+                        <span className={account.user === 'root' ? 'sudoers-principal-root' : ''}>
+                          {account.user}
+                        </span>
+                        {!account.exists ? (
+                          <span className="sudoers-orphan">NO EXISTE</span>
+                        ) : (
+                          <span
+                            className={`sudoers-state ${
+                              account.passwordStatus === 'L' ? 'is-locked' : 'is-active'
+                            }`}
+                          >
+                            {account.passwordStatus === 'L' ? 'BLOQUEADA' : 'ACTIVO'}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mono">{account.uid || '—'}</span>
+                      <span className="mono sudoers-ellipsis" title={account.shell}>
+                        {account.shell || '—'}
+                      </span>
+                      <span className="mono">
+                        <KeyIcon size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                        {account.authorizedKeys}
+                      </span>
+                      <span className="sudoers-account-actions">
+                        <button
+                          className="sudoers-origin-btn"
+                          title="Ver quién creó la cuenta, desde qué IP y cuándo"
+                          onClick={() => void openOrigin(account.user)}
+                          disabled={busy}
+                        >
+                          <SearchIcon size={11} /> Origen
+                        </button>
+                        {account.exists && account.user !== 'root' && (
+                          <button
+                            className={
+                              account.passwordStatus === 'L'
+                                ? 'top-action'
+                                : 'danger-outline-button'
+                            }
+                            onClick={() => {
+                              setActionError(null)
+                              setTarget({
+                                kind: account.passwordStatus === 'L' ? 'unlock' : 'lock',
+                                account,
+                              })
+                            }}
+                            disabled={busy}
+                          >
+                            {account.passwordStatus === 'L' ? 'Desbloquear' : 'Bloquear'}
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  {report.accounts.length === 0 && (
+                    <div className="process-table__empty">Sin cuentas referenciadas.</div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <div className="sudoers-col sudoers-rules">
+              <section className="network-block">
+                <header>
+                  <h3>
+                    <ShieldIcon size={13} /> Reglas de sudoers (/etc/sudoers)
+                  </h3>
+                  <span>{report.rules.length}</span>
+                </header>
+                <div className="sudoers-table sudoers-table--rules">
+                  <div className="sudoers-row sudoers-row--head">
+                    <span>USUARIO</span>
+                    <span>HOST</span>
+                    <span>RUNAS</span>
+                    <span>COMANDOS</span>
+                    <span>ORIGEN</span>
+                    <span style={{ textAlign: 'right' }}>ACCIONES</span>
+                  </div>
+                  {report.rules.map((rule, index) => (
+                    <div className="sudoers-row" key={`${rule.source}-${rule.principal}-${index}`}>
+                      <span className="mono sudoers-user">
+                        {rule.principal.startsWith('%') ? (
+                          <span className="sudoers-principal-group">{rule.principal}</span>
+                        ) : rule.principal === 'root' ? (
+                          <span className="sudoers-principal-root">{rule.principal}</span>
+                        ) : (
+                          <span>{rule.principal}</span>
+                        )}
+                        {rule.nopasswd && <span className="sudoers-badge">NOPASSWD</span>}
+                      </span>
+                      <span className="mono">{rule.host}</span>
+                      <span className="mono">{rule.runas || '—'}</span>
+                      <span
+                        className={`mono sudoers-commands ${
+                          rule.commands.includes('NOPASSWD') || rule.nopasswd
+                            ? 'sudoers-badge'
+                            : ''
+                        }`}
+                        title={rule.commands}
+                        style={
+                          rule.commands.includes('NOPASSWD') || rule.nopasswd
+                            ? { background: 'transparent', border: 'none', padding: 0 }
+                            : undefined
+                        }
+                      >
+                        {rule.commands}
+                      </span>
+                      <span className="mono sudoers-source" title={rule.source}>
+                        {rule.source}
+                      </span>
+                      <span className="sudoers-account-actions">
+                        <button
+                          className="icon-button is-danger"
+                          title="Eliminar esta regla (con backup y visudo -c)"
+                          onClick={() => {
+                            setActionError(null)
+                            setTarget({
+                              kind: 'rule',
+                              source: rule.source,
+                              raw: rule.raw,
+                              principal: rule.principal,
+                            })
+                          }}
+                          disabled={busy}
+                        >
+                          <TrashIcon size={13} />
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                  {report.rules.length === 0 && (
+                    <div className="process-table__empty">Sin reglas explícitas.</div>
+                  )}
+                </div>
+                <div className="sudoers-ledger">
+                  <span>
+                    <ShieldIcon size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                    Cuentas UID 0: <strong>{report.rootAccounts.join(', ') || 'root'}</strong>
                   </span>
                 </div>
-              ))}
-              {report.rules.length === 0 && (
-                <div className="process-table__empty">Sin reglas explícitas.</div>
+              </section>
+              {!report.configOk && (
+                <pre className="ssh-config-output">{report.configOutput}</pre>
               )}
             </div>
-            <div className="sudoers-ledger">
-              <span>
-                Cuentas UID 0: <strong>{report.rootAccounts.join(', ') || 'root'}</strong>
-              </span>
-            </div>
-          </section>
-          {!report.configOk && (
-            <pre className="ssh-config-output">{report.configOutput}</pre>
-          )}
-          </div>
           </div>
         </>
       )}

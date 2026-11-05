@@ -43,21 +43,21 @@ impl ProfileService {
             .list_stored()
             .into_iter()
             .map(|(profile, blob)| {
-                let mut profile = profile;
+                let mut view = profile.view();
                 if let Some(blob) = blob {
                     if let Ok(plain) = self.decrypt_payload(&blob) {
                         if plain.password.is_some() {
-                            profile.password = Some(REDACTED.to_string());
+                            view.has_password = true;
                         }
                         if plain.private_key.is_some() {
-                            profile.private_key = Some(REDACTED.to_string());
+                            view.has_private_key = true;
                         }
                         if plain.passphrase.is_some() {
-                            profile.passphrase = Some(REDACTED.to_string());
+                            view.has_passphrase = true;
                         }
                     }
                 }
-                profile.view()
+                view
             })
             .collect()
     }
@@ -124,7 +124,16 @@ impl ProfileService {
             Some(self.encrypt_payload(&payload)?)
         };
 
-        let view = input.view();
+        let mut view = input.view();
+        if payload.password.is_some() {
+            view.has_password = true;
+        }
+        if payload.private_key.is_some() {
+            view.has_private_key = true;
+        }
+        if payload.passphrase.is_some() {
+            view.has_passphrase = true;
+        }
         self.storage.upsert(input, secret_blob)?;
         Ok(view)
     }
@@ -612,6 +621,8 @@ __HEAD__"#;
             })
             .unwrap();
         assert!(updated.has_password);
+        let listed = service.list();
+        assert!(listed.iter().any(|p| p.id == created.id && p.has_password));
         assert_eq!(
             service.get(&created.id).unwrap().password.as_deref(),
             Some("hunter2")

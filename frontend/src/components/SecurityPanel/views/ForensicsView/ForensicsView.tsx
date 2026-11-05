@@ -1,10 +1,59 @@
-import { AlertIcon, SearchIcon } from '@/components/Icons'
+import {
+  AlertIcon,
+  ClockIcon,
+  FolderIcon,
+  KeyIcon,
+  RefreshIcon,
+  SearchIcon,
+  ShieldIcon,
+  TerminalIcon,
+} from '@/components/Icons'
 
 import { useForensicsView } from './useForensicsView'
 
-export function ForensicsView({ profileId }: { profileId: string }) {
-  const { aiTools, artifacts, attempts, authFailed, authIps, authOk, blockIp, blockedIps, blocking, error, filter, filteredSessions, hits, loading, path, query, regex, run, secrets, section, sessions, setFilter, setPath, setQuery, setRegex, setSection, uniqueIps } = useForensicsView(profileId)
+function parseLastDate(raw: string): { date: string; time: string } | null {
+  if (!raw || raw === '—' || raw.toLowerCase().includes('logged in')) return null
+  const parts = raw.trim().split(/\s+/)
+  if (parts.length >= 5) {
+    const [, month, day, time, year] = parts
+    return {
+      date: `${year || ''} ${month} ${day}`.trim(),
+      time,
+    }
+  }
+  return null
+}
 
+export function ForensicsView({ profileId }: { profileId: string }) {
+  const {
+    aiTools,
+    artifacts,
+    attempts,
+    authFailed,
+    authIps,
+    authOk,
+    blockIp,
+    blockedIps,
+    blocking,
+    error,
+    filter,
+    filteredSessions,
+    hits,
+    loading,
+    path,
+    query,
+    regex,
+    run,
+    secrets,
+    section,
+    sessions,
+    setFilter,
+    setPath,
+    setQuery,
+    setRegex,
+    setSection,
+    uniqueIps,
+  } = useForensicsView(profileId)
 
   return (
     <div className="security-view">
@@ -12,30 +61,63 @@ export function ForensicsView({ profileId }: { profileId: string }) {
         <div className="security-tabs">
           {(
             [
-              ['sessions', 'Sesiones SSH'],
-              ['auth', 'Intentos SSH'],
-              ['artifacts', 'Artefactos'],
-              ['search', 'Búsqueda'],
-              ['secrets', 'Secretos'],
+              ['sessions', 'Sesiones SSH', TerminalIcon],
+              ['auth', 'Intentos SSH', ShieldIcon],
+              ['artifacts', 'Artefactos', FolderIcon],
+              ['search', 'Búsqueda', SearchIcon],
+              ['secrets', 'Secretos', KeyIcon],
             ] as const
-          ).map(([value, label]) => (
+          ).map(([value, label, Icon]) => (
             <button
               key={value}
               className={section === value ? 'is-active' : ''}
               onClick={() => setSection(value)}
             >
+              <Icon size={13} />
               {label}
             </button>
           ))}
         </div>
-        <span className="sec-toolbar__meta">
-          {section === 'sessions' && `${sessions.length} sesiones · ${uniqueIps.length} IPs`}
-          {section === 'auth' &&
-            `${attempts.length} intentos · ${authFailed} fallidos · ${authOk} correctos`}
-          {section === 'artifacts' && `${artifacts.length} entradas`}
-          {section === 'search' && `${hits.length} coincidencias`}
-          {section === 'secrets' && `${secrets.length} archivos`}
-        </span>
+        <div className="forensics-stats">
+          {section === 'sessions' && (
+            <>
+              <span className="forensics-stat-pill">
+                <strong>{sessions.length}</strong> sesiones
+              </span>
+              <span className="forensics-stat-pill">
+                <strong>{uniqueIps.length}</strong> IPs únicas
+              </span>
+            </>
+          )}
+          {section === 'auth' && (
+            <>
+              <span className="forensics-stat-pill">
+                <strong>{attempts.length}</strong> intentos ({authIps.length} IPs)
+              </span>
+              <span className="forensics-stat-pill is-error">
+                <strong>{authFailed}</strong> fallidos
+              </span>
+              <span className="forensics-stat-pill is-ok">
+                <strong>{authOk}</strong> correctos
+              </span>
+            </>
+          )}
+          {section === 'artifacts' && (
+            <span className="forensics-stat-pill">
+              <strong>{artifacts.length}</strong> entradas
+            </span>
+          )}
+          {section === 'search' && (
+            <span className="forensics-stat-pill">
+              <strong>{hits.length}</strong> coincidencias
+            </span>
+          )}
+          {section === 'secrets' && (
+            <span className="forensics-stat-pill is-warn">
+              <strong>{secrets.length}</strong> archivos expuestos
+            </span>
+          )}
+        </div>
       </div>
       {error && (
         <div className="inline-alert inline-alert--error">
@@ -74,6 +156,11 @@ export function ForensicsView({ profileId }: { profileId: string }) {
             </>
           )}
           <button className="primary-button" onClick={() => void run(section)} disabled={loading}>
+            {section === 'search' ? (
+              <SearchIcon size={13} />
+            ) : (
+              <RefreshIcon size={13} className={loading ? 'spin' : ''} />
+            )}
             {loading ? 'Ejecutando…' : section === 'search' ? 'Buscar' : 'Escanear'}
           </button>
         </div>
@@ -91,12 +178,15 @@ export function ForensicsView({ profileId }: { profileId: string }) {
               />
             </div>
             <button className="primary-button" onClick={() => void run('sessions')} disabled={loading}>
+              <RefreshIcon size={13} className={loading ? 'spin' : ''} />
               {loading ? 'Leyendo…' : 'Actualizar'}
             </button>
           </div>
           <div className="network-block">
             <header>
-              <h3>Historial de accesos (last -aF)</h3>
+              <h3>
+                <ClockIcon size={13} /> Historial de accesos (last -aF)
+              </h3>
               <span>{filteredSessions.length} filas</span>
             </header>
             <div className="forensics-table forensics-table--sessions">
@@ -110,39 +200,77 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                 <span>ESTADO</span>
                 <span>ACCIONES</span>
               </div>
-              {filteredSessions.map((session, index) => (
-                <div className="forensics-row" key={`${session.user}-${session.tty}-${session.start}-${index}`}>
-                  <span className="mono">{session.user}</span>
-                  <span className="mono">{session.tty}</span>
-                  <span className="mono forensics-ip">{session.from || '—'}</span>
-                  <span className="mono forensics-dim">{session.start}</span>
-                  <span className="mono forensics-dim">{session.end || '—'}</span>
-                  <span className="mono">{session.duration || '—'}</span>
-                  <span>
-                    {session.current ? (
-                      <span className="forensics-badge is-live">activa</span>
-                    ) : (
-                      <span className="forensics-badge">cerrada</span>
-                    )}
-                  </span>
-                  <span className="forensics-actions">
-                    {session.from && session.from !== '—' && (
-                      <button
-                        className="danger-outline-button"
-                        onClick={() => void blockIp(session.from)}
-                        disabled={blocking === session.from || blockedIps.includes(session.from)}
-                        title={`Bloquear ${session.from}`}
-                      >
-                        {blockedIps.includes(session.from)
-                          ? 'bloqueada'
-                          : blocking === session.from
-                            ? '…'
-                            : 'Bloquear'}
-                      </button>
-                    )}
-                  </span>
-                </div>
-              ))}
+              {filteredSessions.map((session, index) => {
+                const parsedStart = parseLastDate(session.start)
+                const isLive = session.current || session.end?.toLowerCase().includes('logged in')
+                const parsedEnd = parseLastDate(session.end)
+
+                return (
+                  <div className="forensics-row" key={`${session.user}-${session.tty}-${session.start}-${index}`}>
+                    <span className={`mono forensics-user ${session.user === 'root' ? 'is-root' : ''}`}>
+                      {session.user}
+                    </span>
+                    <span className="mono forensics-tty">{session.tty}</span>
+                    <span className="mono forensics-ip">{session.from || '—'}</span>
+                    <span>
+                      {parsedStart ? (
+                        <span className="forensics-time-group" title={session.start}>
+                          <span className="time-val">{parsedStart.time}</span>
+                          <span className="date-val">{parsedStart.date}</span>
+                        </span>
+                      ) : (
+                        <span className="mono forensics-dim">{session.start}</span>
+                      )}
+                    </span>
+                    <span>
+                      {isLive ? (
+                        <span className="forensics-badge is-live">
+                          <span className="forensics-live-dot" /> en sesión
+                        </span>
+                      ) : parsedEnd ? (
+                        <span className="forensics-time-group" title={session.end}>
+                          <span className="time-val">{parsedEnd.time}</span>
+                          <span className="date-val">{parsedEnd.date}</span>
+                        </span>
+                      ) : (
+                        <span className="mono forensics-dim">{session.end || '—'}</span>
+                      )}
+                    </span>
+                    <span className="forensics-duration">
+                      <ClockIcon size={11} />
+                      <span className="mono">{session.duration || '—'}</span>
+                    </span>
+                    <span>
+                      {isLive ? (
+                        <span className="forensics-badge is-live">
+                          <span className="forensics-live-dot" /> activa
+                        </span>
+                      ) : (
+                        <span className="forensics-badge is-closed">cerrada</span>
+                      )}
+                    </span>
+                    <span className="forensics-actions">
+                      {session.from && session.from !== '—' && (
+                        <button
+                          className={`forensics-block-btn ${
+                            blockedIps.includes(session.from) ? 'is-blocked' : ''
+                          }`}
+                          onClick={() => void blockIp(session.from)}
+                          disabled={blocking === session.from || blockedIps.includes(session.from)}
+                          title={`Bloquear ${session.from} en firewall`}
+                        >
+                          <ShieldIcon size={11} />
+                          {blockedIps.includes(session.from)
+                            ? 'Bloqueada'
+                            : blocking === session.from
+                              ? '…'
+                              : 'Bloquear'}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
               {filteredSessions.length === 0 && (
                 <div className="process-table__empty">Sin sesiones.</div>
               )}
@@ -171,14 +299,16 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                 spellCheck={false}
               />
             </div>
-            <span className="sec-toolbar__meta">{authIps.length} IPs distintas</span>
             <button className="primary-button" onClick={() => void run('auth')} disabled={loading}>
+              <RefreshIcon size={13} className={loading ? 'spin' : ''} />
               {loading ? 'Leyendo…' : 'Actualizar'}
             </button>
           </div>
           <div className="network-block">
             <header>
-              <h3>Intentos de autenticación SSH</h3>
+              <h3>
+                <ShieldIcon size={13} /> Intentos de autenticación SSH
+              </h3>
               <span>{attempts.length}</span>
             </header>
             <div className="forensics-table forensics-table--auth">
@@ -200,7 +330,9 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                 .map((item, index) => (
                   <div className="forensics-row" key={`${item.timestamp}-${item.user}-${index}`}>
                     <span className="mono forensics-dim">{item.timestamp}</span>
-                    <span className="mono">{item.user || '—'}</span>
+                    <span className={`mono forensics-user ${item.user === 'root' ? 'is-root' : ''}`}>
+                      {item.user || '—'}
+                    </span>
                     <span className="mono forensics-ip">{item.from || '—'}</span>
                     <span className="mono forensics-dim">{item.method || '—'}</span>
                     <span>
@@ -215,12 +347,16 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                     <span className="forensics-actions">
                       {item.status === 'failed' && item.from && (
                         <button
-                          className="danger-outline-button"
+                          className={`forensics-block-btn ${
+                            blockedIps.includes(item.from) ? 'is-blocked' : ''
+                          }`}
                           onClick={() => void blockIp(item.from)}
                           disabled={blocking === item.from || blockedIps.includes(item.from)}
+                          title={`Bloquear ${item.from}`}
                         >
+                          <ShieldIcon size={11} />
                           {blockedIps.includes(item.from)
-                            ? 'bloqueada'
+                            ? 'Bloqueada'
                             : blocking === item.from
                               ? '…'
                               : 'Bloquear'}
@@ -251,7 +387,9 @@ export function ForensicsView({ profileId }: { profileId: string }) {
           )}
           <div className="network-block">
             <header>
-              <h3>Artefactos en {path}</h3>
+              <h3>
+                <FolderIcon size={13} /> Artefactos en {path}
+              </h3>
               <span>{artifacts.length}</span>
             </header>
             <div className="forensics-table forensics-table--artifacts">
@@ -285,7 +423,9 @@ export function ForensicsView({ profileId }: { profileId: string }) {
       {section === 'search' && (
         <div className="network-block">
           <header>
-            <h3>Coincidencias en {path}</h3>
+            <h3>
+              <SearchIcon size={13} /> Coincidencias en {path}
+            </h3>
             <span>{hits.length}</span>
           </header>
           <div className="forensics-hits">
@@ -313,7 +453,9 @@ export function ForensicsView({ profileId }: { profileId: string }) {
           </div>
           <div className="network-block">
             <header>
-              <h3>Credenciales detectadas en {path}</h3>
+              <h3>
+                <KeyIcon size={13} /> Credenciales detectadas en {path}
+              </h3>
               <span>{secrets.length}</span>
             </header>
             <div className="forensics-table forensics-table--secrets">

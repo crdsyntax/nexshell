@@ -126,23 +126,23 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
         <>
           <div className="network-summary">
             <div>
-              <span>hostname</span>
+              <span>Hostname</span>
               <strong className="mono">{report.hostname}</strong>
             </div>
             <div>
-              <span>listening</span>
+              <span>Listening</span>
               <strong className="mono">{report.listening.length}</strong>
             </div>
             <div className={publicPorts > 0 ? 'is-warn' : 'is-ok'}>
-              <span>public sockets</span>
+              <span>Public sockets</span>
               <strong className="mono">{publicPorts}</strong>
             </div>
             <div>
-              <span>established</span>
+              <span>Established</span>
               <strong className="mono">{report.connections.length}</strong>
             </div>
             <div>
-              <span>sampled</span>
+              <span>Sampled</span>
               <strong className="mono">
                 {new Date(report.generatedAt * 1000).toLocaleTimeString()}
               </strong>
@@ -152,9 +152,11 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
           <section className="network-block">
             <header>
               <h3>
-                <NetworkIcon size={13} /> Listening sockets
+                <NetworkIcon size={14} /> Listening sockets
               </h3>
-              <span>{listening.length} shown</span>
+              <span className="forensics-stat-pill">
+                <strong>{listening.length}</strong> {listening.length === 1 ? 'socket' : 'sockets'}
+              </span>
             </header>
             <div className="network-table">
               <div className="network-row network-row--head">
@@ -167,11 +169,11 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
               </div>
               {listening.map((port) => (
                 <div className="network-row" key={`${port.protocol}-${port.local}-${port.pid}`}>
-                  <span className="mono">{port.protocol}</span>
-                  <span className="mono network-address">{port.ip}</span>
-                  <span className="mono">{port.port}</span>
-                  <span className="mono network-process">{port.process || '—'}</span>
-                  <span className="mono">{port.pid ?? '—'}</span>
+                  <span className="mono network-proto-pill">{port.protocol}</span>
+                  <span className="mono network-address" title={port.ip}>{port.ip}</span>
+                  <span className="mono" style={{ fontWeight: 600 }}>{port.port}</span>
+                  <span className="mono network-process" title={port.process || '—'}>{port.process || '—'}</span>
+                  <span className="mono" style={{ color: 'var(--muted-2)' }}>{port.pid ?? '—'}</span>
                   <span>
                     {port.public ? (
                       <span className="network-badge is-public">
@@ -194,9 +196,11 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
           <section className="network-block">
             <header>
               <h3>
-                <NetworkIcon size={13} /> Established connections
+                <NetworkIcon size={14} /> Established connections
               </h3>
-              <span>{connections.length} shown</span>
+              <span className="forensics-stat-pill">
+                <strong>{connections.length}</strong> {connections.length === 1 ? 'conexión activa' : 'conexiones activas'}
+              </span>
             </header>
             <div className="network-table network-table--connections">
               <div className="network-row network-row--head">
@@ -216,19 +220,21 @@ export function NetworkPanel({ profileId }: NetworkPanelProps) {
                   onClick={() => openTraffic(connection)}
                   title="Ver tráfico de esta conexión"
                 >
-                  <span className="mono">{connection.protocol}</span>
+                  <span className="mono network-proto-pill">{connection.protocol}</span>
                   <span className={`network-state state-${connection.state.toLowerCase()}`}>
                     {connection.state}
                   </span>
-                  <span className="mono network-address">{connection.local}</span>
-                  <span className="mono network-address">{connection.remote}</span>
+                  <span className="mono network-address" title={connection.local}>{connection.local}</span>
+                  <span className="mono network-address" title={connection.remote} style={{ color: 'var(--accent)', fontWeight: 500 }}>
+                    {connection.remote}
+                  </span>
                   <span
                     className="mono network-process"
                     title="Nombre corto del kernel (máx. 15 caracteres). Abre la conexión para leer el comando real."
                   >
                     {connection.process || '—'}
                   </span>
-                  <span className="mono">{connection.pid ?? '—'}</span>
+                  <span className="mono" style={{ color: 'var(--muted-2)' }}>{connection.pid ?? '—'}</span>
                   <span className="mono network-traffic">{formatBytes(connection.bytesSent)}</span>
                   <span className="mono network-traffic">{formatBytes(connection.bytesReceived)}</span>
                 </div>

@@ -147,12 +147,14 @@ fn install_script(ignore_ip: Option<&str>) -> AppResult<String> {
 if ! command -v fail2ban-client >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
+    apt-get update -qq || true
     apt-get install -y fail2ban
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y fail2ban
+    dnf install -y --setopt=skip_if_unavailable=True epel-release || true
+    dnf install -y --setopt=skip_if_unavailable=True fail2ban
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y fail2ban
+    yum install -y --setopt=skip_if_unavailable=True epel-release || true
+    yum install -y --setopt=skip_if_unavailable=True fail2ban
   else
     echo "unsupported package manager: install fail2ban manually" >&2
     exit 1
@@ -172,8 +174,9 @@ fn configure_script(ignore_ip: Option<&str>, enable: bool) -> AppResult<String> 
 fn configure_body(ignore: &str, enable: bool) -> String {
     let jail = JAIL_TEMPLATE.replace("__IGNORE__", ignore);
     let enable_block = if enable {
-        r#"systemctl enable --now fail2ban >/dev/null 2>&1 || true
-fail2ban-client reload >/dev/null 2>&1 || true
+        r#"[ ! -S /var/run/fail2ban/fail2ban.sock ] || fail2ban-client ping >/dev/null 2>&1 || rm -f /var/run/fail2ban/fail2ban.sock
+systemctl enable --now fail2ban >/dev/null 2>&1 || true
+systemctl restart fail2ban >/dev/null 2>&1 || true
 for i in 1 2 3 4 5; do fail2ban-client status sshd >/dev/null 2>&1 && break; sleep 1; done
 fail2ban-client status sshd"#
     } else {

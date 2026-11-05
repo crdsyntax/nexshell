@@ -1,4 +1,4 @@
-import { AlertIcon, CheckIcon, ChevronRightIcon, RefreshIcon, ShieldIcon, WrenchIcon, XIcon } from '@/components/Icons'
+import { AlertIcon, CheckIcon, ChevronRightIcon, CopyIcon, RefreshIcon, ShieldIcon, TerminalIcon, WrenchIcon, XIcon } from '@/components/Icons'
 import { securityService } from '@/services/security.service'
 import type { SecurityFinding } from '@/types'
 import type { CSSProperties } from 'react'
@@ -316,10 +316,33 @@ function FindingRow({
         </span>
       </summary>
       <div className="finding-body">
-        <p>{finding.detail}</p>
-        {finding.evidence && <pre>{finding.evidence}</pre>}
+        <p className="finding-detail">{finding.detail}</p>
+        {finding.evidence && (
+          <div className="finding-evidence-block">
+            <div className="finding-evidence-header">
+              <span className="finding-evidence-tag">
+                <TerminalIcon size={11} /> Evidencia detectada
+              </span>
+              <button
+                type="button"
+                className="finding-evidence-copy"
+                title="Copiar evidencia"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void navigator.clipboard.writeText(finding.evidence)
+                }}
+              >
+                <CopyIcon size={11} /> Copiar
+              </button>
+            </div>
+            <pre>{finding.evidence}</pre>
+          </div>
+        )}
         <div className="finding-remediation">
-          <span>Remediation</span>
+          <span>
+            <CheckIcon size={12} /> Remediación recomendada
+          </span>
           <p>{finding.remediation}</p>
         </div>
       </div>

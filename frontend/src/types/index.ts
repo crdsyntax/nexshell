@@ -163,6 +163,8 @@ export interface DbAuth {
   password: string
   host: string
   port: number
+  engine?: 'mysql' | 'mariadb' | 'mongodb'
+  authDb?: string
 }
 
 export interface DbInfo {

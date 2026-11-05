@@ -599,6 +599,8 @@ pub async fn database_test_login(
     password: String,
     port: Option<u16>,
     database: Option<String>,
+    engine: Option<String>,
+    auth_db: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<DbLoginTest> {
     let profile = state.profiles.get(&profile_id)?;
@@ -610,6 +612,8 @@ pub async fn database_test_login(
         port.unwrap_or(3306),
         database.as_deref(),
         &password,
+        engine.as_deref(),
+        auth_db.as_deref(),
     )
     .await;
     state.audit.log(

@@ -436,7 +436,7 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
               {cpu.toFixed(1)}%
             </strong>
           </header>
-          <Sparkline values={historyView.cpu} color="#bd93f9" />
+          <Sparkline values={historyView.cpu} color="#1570ef" />
           <footer>{snapshot.cores.length} logical cores</footer>
         </article>
 
@@ -454,7 +454,7 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
             <span>{formatKb(snapshot.memUsedKb)} used</span>
             <span>{formatKb(snapshot.memTotalKb)} total</span>
           </div>
-          <Sparkline values={historyView.mem} color="#50fa7b" />
+          <Sparkline values={historyView.mem} color="#16b364" />
           <footer>
             {formatKb(snapshot.memAvailableKb)} available · swap{' '}
             {formatKb(snapshot.swapUsedKb)}
@@ -506,8 +506,8 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
           <Sparkline
             values={historyView.rx}
             secondary={historyView.tx}
-            color="#8be9fd"
-            secondaryColor="#bd93f9"
+            color="#63f4b0"
+            secondaryColor="#1570ef"
             max={maxNetwork}
           />
           <footer>rx solid · tx dashed</footer>

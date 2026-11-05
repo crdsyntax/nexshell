@@ -58,12 +58,39 @@ describe('DatabasePanel', () => {
       password: 's3cret-pass',
       host: 'localhost',
       port: 3306,
+      engine: 'mysql',
+      authDb: undefined,
     })
     expect(databaseService.users).toHaveBeenCalledWith('p1', {
       user: 'root',
       password: 's3cret-pass',
       host: 'localhost',
       port: 3306,
+      engine: 'mysql',
+      authDb: undefined,
+    })
+  })
+
+  it('permite cambiar a MongoDB y conectar con credenciales MongoDB', async () => {
+    render(<DatabasePanel profileId="p1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'MongoDB' }))
+    expect(screen.getByText('Conectar a MongoDB')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('admin')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Contraseña'), {
+      target: { value: 'mongo-pass' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Conectar y detectar/i }))
+
+    expect(await screen.findByText('app_user')).toBeInTheDocument()
+    expect(databaseService.info).toHaveBeenCalledWith('p1', {
+      user: 'admin',
+      password: 'mongo-pass',
+      host: '127.0.0.1',
+      port: 27017,
+      engine: 'mongodb',
+      authDb: 'admin',
     })
   })
 

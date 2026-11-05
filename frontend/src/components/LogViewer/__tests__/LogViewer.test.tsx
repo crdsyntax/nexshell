@@ -21,4 +21,24 @@ describe('LogViewer', () => {
       screen.getByText('at Socket.emit (node:domain:489:12)').closest('.log-line'),
     ).toHaveClass('is-stack')
   })
+
+  it('clasifica líneas de log NestJS con el verde correspondiente', () => {
+    const nestLogs = [
+      '[Nest] 3612050 - 11/05/2026, 5:10:03 PM LOG [NotificationWebSocket] Cliente desconectado',
+      '[Nest] 3612038 - 11/05/2026, 5:10:02 PM WARN [BookingPreloadSubscriber] Product not found',
+    ].join('\n')
+
+    render(<LogViewer text={nestLogs} />)
+
+    expect(
+      screen
+        .getByText(/\[NotificationWebSocket\] Cliente desconectado/)
+        .closest('.log-line'),
+    ).toHaveClass('is-log')
+    expect(
+      screen
+        .getByText(/\[BookingPreloadSubscriber\] Product not found/)
+        .closest('.log-line'),
+    ).toHaveClass('is-warn')
+  })
 })

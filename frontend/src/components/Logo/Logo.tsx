@@ -21,15 +21,16 @@ export function Logo({ size = 34, className }: LogoProps) {
     >
       <defs>
         <linearGradient id={markId} x1="18" y1="12" x2="49" y2="53" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#bd93f9" />
-          <stop offset="1" stopColor="#ff79c6" />
+          <stop offset="0" stopColor="#0c4089" />
+          <stop offset="0.6" stopColor="#1570ef" />
+          <stop offset="1" stopColor="#2873dd" />
         </linearGradient>
         <radialGradient id={glowId} cx="32" cy="24" r="30" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#bd93f9" stopOpacity="0.18" />
-          <stop offset="1" stopColor="#bd93f9" stopOpacity="0" />
+          <stop offset="0" stopColor="#1570ef" stopOpacity="0.12" />
+          <stop offset="1" stopColor="#1570ef" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <rect x="2" y="2" width="60" height="60" rx="16" fill="#1e1f29" />
+      <rect x="2" y="2" width="60" height="60" rx="16" fill="#ffffff" />
       <rect
         x="2.75"
         y="2.75"
@@ -37,7 +38,7 @@ export function Logo({ size = 34, className }: LogoProps) {
         height="58.5"
         rx="15.25"
         fill="none"
-        stroke="#363946"
+        stroke="#eaecf0"
         strokeWidth="1.5"
       />
       <circle cx="32" cy="26" r="27" fill={`url(#${glowId})`} />
@@ -49,7 +50,7 @@ export function Logo({ size = 34, className }: LogoProps) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <rect x="43.5" y="42" width="7" height="7" rx="1.8" fill="#50fa7b" />
+      <rect x="43.5" y="42" width="7" height="7" rx="1.8" fill="#16b364" />
     </svg>
   )
 }

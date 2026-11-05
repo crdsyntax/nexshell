@@ -32,7 +32,9 @@ const CATEGORIES = [
 const STATUSES = ['success', 'failed', 'error']
 
 function formatTime(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleString()
+  const d = new Date(timestamp * 1000)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 export function AuditPanel() {
@@ -237,7 +239,9 @@ export function AuditPanel() {
                 {log.target ?? log.command ?? '—'}
               </span>
               <span className={`audit-status status-${log.status}`}>{log.status}</span>
-              <span className="mono audit-exit">{log.exitCode ?? '—'}</span>
+              <span className={`mono audit-exit ${log.exitCode !== null && log.exitCode !== 0 ? 'is-error' : ''}`}>
+                {log.exitCode ?? '—'}
+              </span>
               <span className="mono audit-duration">
                 {log.durationMs !== null ? `${log.durationMs} ms` : '—'}
               </span>

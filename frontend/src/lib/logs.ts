@@ -1,6 +1,6 @@
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(\u0007|\u001b\\)/g
 
-export type LogKind = 'error' | 'stack' | 'warn' | 'success' | 'debug' | 'normal'
+export type LogKind = 'error' | 'stack' | 'warn' | 'log' | 'success' | 'debug' | 'normal'
 
 const ERROR_PATTERNS = [
   /\berror\b/i,
@@ -19,6 +19,7 @@ const ERROR_PATTERNS = [
 ]
 
 const WARN_PATTERNS = [/\bwarn(ing)?\b/i, /\bdeprecated\b/i, /\bretry(ing)?\b/i]
+const LOG_PATTERNS = [/\bLOG\b/, /\bINFO\b/i, /\[Nest\]/i]
 const SUCCESS_PATTERNS = [/\bready\b/i, /\blistening\b/i, /\bstarted\b/i, /\bconnected\b/i]
 const DEBUG_PATTERNS = [/\bdebug\b/i, /\btrace\b/i, /\bverbose\b/i]
 
@@ -31,6 +32,7 @@ export function classifyLogLine(line: string): LogKind {
   if (ERROR_PATTERNS.some((pattern) => pattern.test(text))) return 'error'
   if (/^\s*at\s/.test(text)) return 'stack'
   if (WARN_PATTERNS.some((pattern) => pattern.test(text))) return 'warn'
+  if (LOG_PATTERNS.some((pattern) => pattern.test(text))) return 'log'
   if (DEBUG_PATTERNS.some((pattern) => pattern.test(text))) return 'debug'
   if (SUCCESS_PATTERNS.some((pattern) => pattern.test(text))) return 'success'
   return 'normal'
