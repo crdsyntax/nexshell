@@ -29,6 +29,7 @@
   },
   "plugins": {
     "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyQTMyQTcyNEJEM0ZDRTMKUldUai9OTkxjaXFqTWhzdTBlNDlWYitHUUdvb2E1RWRBbzFWTWxGd2hpRGN4TXhPN2pwZ1dJVGcK",
       "endpoints": [
         "https://nexshell-updates.crdsyntax.workers.dev/latest.json"
       ]
