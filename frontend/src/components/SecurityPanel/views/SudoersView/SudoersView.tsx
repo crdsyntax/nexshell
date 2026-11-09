@@ -52,7 +52,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
       <div className="sec-toolbar">
         <button className="primary-button" onClick={() => void load()} disabled={loading}>
           <RefreshIcon size={13} className={loading ? 'spin' : ''} />
-          {loading ? 'Leyendo sudoers…' : 'Leer sudoers'}
+          {loading ? 'Reading sudoers…' : 'Read sudoers'}
         </button>
         {report && (
           <>
@@ -62,13 +62,13 @@ export function SudoersView({ profileId }: { profileId: string }) {
             </span>
             <div className="forensics-stats">
               <span className="forensics-stat-pill">
-                <strong>{report.rules.length}</strong> reglas activas
+                <strong>{report.rules.length}</strong> active rules
               </span>
               <span className={`forensics-stat-pill ${nopasswd > 0 ? 'is-warning' : ''}`}>
-                <strong>{nopasswd}</strong> sin contraseña
+                <strong>{nopasswd}</strong> passwordless
               </span>
               <span className="forensics-stat-pill">
-                <strong>{report.accounts.length}</strong> cuentas
+                <strong>{report.accounts.length}</strong> accounts
               </span>
             </div>
           </>
@@ -90,39 +90,39 @@ export function SudoersView({ profileId }: { profileId: string }) {
                 <AlertIcon size={20} />
               </div>
               <div className="sudoers-permission-alert__body">
-                <h4>Permisos insuficientes para auditar sudoers</h4>
+                <h4>Insufficient permissions to audit sudoers</h4>
                 <p>
-                  El usuario de la sesión SSH actual (<strong>{profile?.username || 'usuario'}</strong>) no posee privilegios de superusuario (root/sudo) para leer <code>/etc/sudoers</code>.
+                  The current SSH session user (<strong>{profile?.username || 'user'}</strong>) lacks superuser (root/sudo) privileges to read <code>/etc/sudoers</code>.
                 </p>
                 <div className="sudoers-permission-alert__details mono">
                   {report.configOutput}
                 </div>
                 <div className="sudoers-permission-alert__solutions">
-                  <strong>¿Cómo visualizar las reglas y usuarios de sudoers?</strong>
+                  <strong>How to view sudoers rules and privileged accounts:</strong>
                   <ol>
                     <li>
-                      <strong>Conectarse como root:</strong> Inicia sesión o edita el perfil para conectar directamente con el usuario <code>root</code>.
+                      <strong>Connect as root:</strong> Log in or update the connection profile to authenticate directly as the <code>root</code> user.
                     </li>
                     <li>
-                      <strong>Habilitar elevación en el perfil:</strong> Si el usuario <code>{profile?.username || 'actual'}</code> dispone de acceso sudo en el servidor, edita el perfil de conexión y marca la opción <em>"Use sudo -n for service actions"</em>.
+                      <strong>Enable profile elevation:</strong> If the user <code>{profile?.username || 'current'}</code> has sudo privileges on the server, edit the connection profile and enable <em>"Use sudo -n for service actions"</em>.
                     </li>
                     <li>
-                      <strong>Otorga permisos de lectura en el servidor:</strong> Si administras el servidor, añade a este usuario al grupo <code>wheel</code> o añade una regla NOPASSWD:
+                      <strong>Grant read permissions on the host:</strong> If you administer the host, add this user to the <code>wheel</code> group or add a NOPASSWD audit drop-in rule:
                       <div className="command-result__copy-snippet" style={{ marginTop: 6 }}>
                         <code>
-                          {`echo "${profile?.username || 'usuario'} ALL=(ALL) NOPASSWD: /usr/sbin/visudo, /bin/cat /etc/sudoers, /bin/cat /etc/sudoers.d/*" | sudo tee /etc/sudoers.d/2shell-audit`}
+                          {`echo "${profile?.username || 'user'} ALL=(ALL) NOPASSWD: /usr/sbin/visudo, /bin/cat /etc/sudoers, /bin/cat /etc/sudoers.d/*" | sudo tee /etc/sudoers.d/2shell-audit`}
                         </code>
                         <button
                           type="button"
                           className="ghost-button ghost-button--xs"
                           onClick={() => {
                             navigator.clipboard.writeText(
-                              `echo "${profile?.username || 'usuario'} ALL=(ALL) NOPASSWD: /usr/sbin/visudo, /bin/cat /etc/sudoers, /bin/cat /etc/sudoers.d/*" | sudo tee /etc/sudoers.d/2shell-audit`,
+                              `echo "${profile?.username || 'user'} ALL=(ALL) NOPASSWD: /usr/sbin/visudo, /bin/cat /etc/sudoers, /bin/cat /etc/sudoers.d/*" | sudo tee /etc/sudoers.d/2shell-audit`,
                             )
-                            pushToast('success', 'Regla de auditoría copiada al portapapeles')
+                            pushToast('success', 'Audit rule copied to clipboard')
                           }}
                         >
-                          Copiar regla
+                          Copy rule
                         </button>
                       </div>
                     </li>
@@ -139,11 +139,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
               </span>
               <div className="risk-banner__body">
                 <strong>
-                  Exposición crítica: {nopasswd} regla{nopasswd === 1 ? '' : 's'} permiten sudo sin contraseña
+                  Critical exposure: {nopasswd} rule{nopasswd === 1 ? '' : 's'} allow passwordless sudo
                 </strong>
                 <p>
-                  Revisa que cada regla esté limitada al comando exacto necesario. Una regla
-                  NOPASSWD: ALL equivale a root sin barrera.
+                  Verify that each rule is scoped to the exact required command binary. A
+                  NOPASSWD: ALL rule provides unrestricted root escalation.
                 </p>
               </div>
               <button
@@ -154,7 +154,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
                     ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
                 }
               >
-                Examinar riesgo
+                Inspect risk
               </button>
             </div>
           )}
@@ -164,15 +164,15 @@ export function SudoersView({ profileId }: { profileId: string }) {
               <section className="network-block">
                 <header>
                   <h3>
-                    <ShieldIcon size={13} /> Grupos con privilegios
+                    <ShieldIcon size={13} /> Privileged groups
                   </h3>
-                  <span>{privilegedUsers.length} usuarios</span>
+                  <span>{privilegedUsers.length} users</span>
                 </header>
                 <div className="sudoers-table">
                   <div className="sudoers-row sudoers-row--head">
-                    <span>GRUPO</span>
+                    <span>GROUP</span>
                     <span>GID</span>
-                    <span>MIEMBROS</span>
+                    <span>MEMBERS</span>
                   </div>
                   {report.groups.map((group) => (
                     <div className="sudoers-row" key={group.name}>
@@ -185,7 +185,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   ))}
                   {report.groups.length === 0 && (
                     <div className="process-table__empty">
-                      No se encontraron grupos wheel/sudo/admin.
+                      No wheel/sudo/admin groups found.
                     </div>
                   )}
                 </div>
@@ -194,17 +194,17 @@ export function SudoersView({ profileId }: { profileId: string }) {
               <section className="network-block">
                 <header>
                   <h3>
-                    <ShieldIcon size={13} /> Cuentas referenciadas
+                    <ShieldIcon size={13} /> Referenced accounts
                   </h3>
                   <span>{report.accounts.length}</span>
                 </header>
                 <div className="sudoers-table sudoers-table--accounts">
                   <div className="sudoers-row sudoers-row--head">
-                    <span>USUARIO</span>
+                    <span>USER</span>
                     <span>UID</span>
                     <span>SHELL</span>
-                    <span>CLAVES</span>
-                    <span style={{ textAlign: 'right' }}>ACCIONES</span>
+                    <span>KEYS</span>
+                    <span style={{ textAlign: 'right' }}>ACTIONS</span>
                   </div>
                   {report.accounts.map((account) => (
                     <div className="sudoers-row" key={account.user}>
@@ -213,14 +213,14 @@ export function SudoersView({ profileId }: { profileId: string }) {
                           {account.user}
                         </span>
                         {!account.exists ? (
-                          <span className="sudoers-orphan">NO EXISTE</span>
+                          <span className="sudoers-orphan">NOT FOUND</span>
                         ) : (
                           <span
                             className={`sudoers-state ${
                               account.passwordStatus === 'L' ? 'is-locked' : 'is-active'
                             }`}
                           >
-                            {account.passwordStatus === 'L' ? 'BLOQUEADA' : 'ACTIVO'}
+                            {account.passwordStatus === 'L' ? 'LOCKED' : 'ACTIVE'}
                           </span>
                         )}
                       </span>
@@ -235,11 +235,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
                       <span className="sudoers-account-actions">
                         <button
                           className="sudoers-origin-btn"
-                          title="Ver quién creó la cuenta, desde qué IP y cuándo"
+                          title="View account creation source, originating IP, and timestamps"
                           onClick={() => void openOrigin(account.user)}
                           disabled={busy}
                         >
-                          <SearchIcon size={11} /> Origen
+                          <SearchIcon size={11} /> Origin
                         </button>
                         {account.exists && account.user !== 'root' && (
                           <button
@@ -257,7 +257,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
                             }}
                             disabled={busy}
                           >
-                            {account.passwordStatus === 'L' ? 'Desbloquear' : 'Bloquear'}
+                            {account.passwordStatus === 'L' ? 'Unlock' : 'Lock'}
                           </button>
                         )}
                       </span>
@@ -266,8 +266,8 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   {report.accounts.length === 0 && (
                     <div className="process-table__empty">
                       {isPermissionDenied
-                        ? 'No se pudieron resolver cuentas de sudoers: requiere privilegios de root/sudo.'
-                        : 'Sin cuentas referenciadas.'}
+                        ? 'Unable to resolve sudoers accounts: root/sudo privileges required.'
+                        : 'No referenced accounts.'}
                     </div>
                   )}
                 </div>
@@ -278,18 +278,18 @@ export function SudoersView({ profileId }: { profileId: string }) {
               <section className="network-block">
                 <header>
                   <h3>
-                    <ShieldIcon size={13} /> Reglas de sudoers (/etc/sudoers)
+                    <ShieldIcon size={13} /> Sudoers rules (/etc/sudoers)
                   </h3>
                   <span>{report.rules.length}</span>
                 </header>
                 <div className="sudoers-table sudoers-table--rules">
                   <div className="sudoers-row sudoers-row--head">
-                    <span>USUARIO</span>
+                    <span>USER</span>
                     <span>HOST</span>
                     <span>RUNAS</span>
-                    <span>COMANDOS</span>
-                    <span>ORIGEN</span>
-                    <span style={{ textAlign: 'right' }}>ACCIONES</span>
+                    <span>COMMANDS</span>
+                    <span>SOURCE</span>
+                    <span style={{ textAlign: 'right' }}>ACTIONS</span>
                   </div>
                   {report.rules.map((rule, index) => (
                     <div className="sudoers-row" key={`${rule.source}-${rule.principal}-${index}`}>
@@ -326,7 +326,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
                       <span className="sudoers-account-actions">
                         <button
                           className="icon-button is-danger"
-                          title="Eliminar esta regla (con backup y visudo -c)"
+                          title="Delete this rule (with backup and visudo -c)"
                           onClick={() => {
                             setActionError(null)
                             setTarget({
@@ -346,15 +346,15 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   {report.rules.length === 0 && (
                     <div className="process-table__empty">
                       {isPermissionDenied
-                        ? 'No se pudieron leer las reglas: permiso denegado en /etc/sudoers.'
-                        : 'Sin reglas explícitas.'}
+                        ? 'Unable to read rules: permission denied on /etc/sudoers.'
+                        : 'No explicit rules.'}
                     </div>
                   )}
                 </div>
                 <div className="sudoers-ledger">
                   <span>
                     <ShieldIcon size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                    Cuentas UID 0: <strong>{report.rootAccounts.join(', ') || 'root'}</strong>
+                    UID 0 accounts: <strong>{report.rootAccounts.join(', ') || 'root'}</strong>
                   </span>
                 </div>
               </section>
@@ -380,10 +380,10 @@ export function SudoersView({ profileId }: { profileId: string }) {
             <header className="modal__header">
               <div>
                 <h2>
-                  Origen de la cuenta · {originUser}
+                  Account origin · {originUser}
                   <span className="panel__sub">{profileId}</span>
                 </h2>
-                <p>auditd, /var/log/secure, sudo, last y sistema de archivos.</p>
+                <p>auditd, /var/log/secure, sudo, last, and filesystem metadata.</p>
               </div>
               <button
                 className="icon-button"
@@ -392,13 +392,13 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   setOrigin(null)
                 }}
                 disabled={originLoading}
-                title="Cerrar"
+                title="Close"
               >
                 <XIcon size={16} />
               </button>
             </header>
             <div className="modal__body pm2-logs-body">
-              {originLoading && <div className="process-table__empty">buscando rastro…</div>}
+              {originLoading && <div className="process-table__empty">tracing origin…</div>}
               {originError && (
                 <div className="inline-alert inline-alert--error">
                   <AlertIcon size={15} />
@@ -409,16 +409,16 @@ export function SudoersView({ profileId }: { profileId: string }) {
                 <>
                   <div className="origin-grid">
                     <div>
-                      <span>Creada</span>
-                      <strong className="mono">{origin.createdAt || 'desconocido'}</strong>
+                      <span>Created</span>
+                      <strong className="mono">{origin.createdAt || 'unknown'}</strong>
                     </div>
                     <div>
-                      <span>Creada por</span>
-                      <strong className="mono">{origin.createdBy || 'desconocido'}</strong>
+                      <span>Created by</span>
+                      <strong className="mono">{origin.createdBy || 'unknown'}</strong>
                     </div>
                     <div>
-                      <span>IP de origen</span>
-                      <strong className="mono">{origin.sourceIp || 'desconocida'}</strong>
+                      <span>Source IP</span>
+                      <strong className="mono">{origin.sourceIp || 'unknown'}</strong>
                     </div>
                     <div>
                       <span>Home</span>
@@ -427,13 +427,13 @@ export function SudoersView({ profileId }: { profileId: string }) {
                       </strong>
                     </div>
                     <div>
-                      <span>Grupo</span>
+                      <span>Group</span>
                       <strong className="mono">{origin.group || '—'}</strong>
                     </div>
                     <div>
                       <span>auditd</span>
                       <strong className="mono">
-                        {origin.auditAvailable ? 'con registros' : 'sin registros'}
+                        {origin.auditAvailable ? 'logged' : 'no audit records'}
                       </strong>
                     </div>
                   </div>
@@ -446,10 +446,10 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   )}
 
                   <div className="origin-section">
-                    <h4>Eventos de creación</h4>
+                    <h4>Creation events</h4>
                     {origin.evidence.length === 0 ? (
                       <p className="process-table__empty">
-                        Sin evidencia de creación en los logs disponibles.
+                        No creation evidence found in available logs.
                       </p>
                     ) : (
                       <div className="origin-events">
@@ -470,22 +470,22 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   </div>
 
                   <div className="origin-section">
-                    <h4>Inicios de sesión ({origin.logins.length})</h4>
+                    <h4>Login sessions ({origin.logins.length})</h4>
                     <pre className="pm2-log-pre origin-pre">
-                      {origin.logins.join('\n') || 'sin registros en last'}
+                      {origin.logins.join('\n') || 'no entries in last'}
                     </pre>
                   </div>
 
                   {origin.sshLog.length > 0 && (
                     <details className="origin-section">
-                      <summary>Accesos SSH de root ({origin.sshLog.length})</summary>
+                      <summary>Root SSH access ({origin.sshLog.length})</summary>
                       <pre className="pm2-log-pre origin-pre">{origin.sshLog.join('\n')}</pre>
                     </details>
                   )}
 
                   {origin.history.length > 0 && (
                     <details className="origin-section">
-                      <summary>Historial de root ({origin.history.length})</summary>
+                      <summary>Root shell history ({origin.history.length})</summary>
                       <pre className="pm2-log-pre origin-pre">{origin.history.join('\n')}</pre>
                     </details>
                   )}
@@ -494,7 +494,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
             </div>
             <footer className="modal__footer">
               <span className="field-hint">
-                auditd es la fuente fiable; sin audit los logs pueden haberse borrado.
+                auditd is the authoritative source; without auditd, ephemeral logs may have rotated or purged.
               </span>
               <button
                 className="ghost-button"
@@ -503,7 +503,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   setOrigin(null)
                 }}
               >
-                Cerrar
+                Close
               </button>
             </footer>
           </div>
@@ -522,22 +522,22 @@ export function SudoersView({ profileId }: { profileId: string }) {
               <div>
                 <h2>
                   {target.kind === 'rule'
-                    ? 'Eliminar regla de sudoers'
+                    ? 'Remove sudoers rule'
                     : target.kind === 'lock'
-                      ? `Bloquear ${target.account.user}`
-                      : `Desbloquear ${target.account.user}`}
+                      ? `Lock account · ${target.account.user}`
+                      : `Unlock account · ${target.account.user}`}
                 </h2>
                 <p>
                   {target.kind === 'rule'
-                    ? 'Se hace backup y se valida con visudo -c.'
-                    : 'La cuenta conserva sus archivos; solo se cambia el estado de la contraseña.'}
+                    ? 'A timestamped backup will be created and validated with visudo -c.'
+                    : 'The account retains all files; only the shadow password status is modified.'}
                 </p>
               </div>
               <button
                 className="icon-button"
                 onClick={() => setTarget(null)}
                 disabled={busy}
-                title="Cerrar"
+                title="Close"
               >
                 <XIcon size={16} />
               </button>
@@ -547,11 +547,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
                 <>
                   <div className="process-summary">
                     <div>
-                      <span>Usuario</span>
+                      <span>Principal</span>
                       <strong className="mono">{target.principal}</strong>
                     </div>
                     <div>
-                      <span>Origen</span>
+                      <span>Source</span>
                       <strong className="mono">{target.source}</strong>
                     </div>
                     <code>{target.raw}</code>
@@ -559,15 +559,15 @@ export function SudoersView({ profileId }: { profileId: string }) {
                   <div className="inline-alert inline-alert--error">
                     <AlertIcon size={15} />
                     <span>
-                      Si es el único contenido del drop-in, se elimina el archivo. El backup
-                      queda en /var/backups/2shell/sudoers.
+                      If this is the only rule in the drop-in file, the file will be removed. Backups
+                      are saved to /var/backups/2shell/sudoers.
                     </span>
                   </div>
                 </>
               ) : (
                 <div className="process-summary">
                   <div>
-                    <span>Cuenta</span>
+                    <span>Account</span>
                     <strong className="mono">{target.account.user}</strong>
                   </div>
                   <div>
@@ -575,11 +575,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
                     <strong className="mono">{target.account.uid || '—'}</strong>
                   </div>
                   <div>
-                    <span>Claves SSH</span>
+                    <span>SSH keys</span>
                     <strong className="mono">{target.account.authorizedKeys}</strong>
                   </div>
                   <div>
-                    <span>Último login</span>
+                    <span>Last login</span>
                     <strong className="mono">{target.account.lastLogin || '—'}</strong>
                   </div>
                 </div>
@@ -597,7 +597,7 @@ export function SudoersView({ profileId }: { profileId: string }) {
                 onClick={() => setTarget(null)}
                 disabled={busy}
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 className={target.kind === 'rule' ? 'danger-button' : 'primary-button'}
@@ -605,12 +605,12 @@ export function SudoersView({ profileId }: { profileId: string }) {
                 disabled={busy}
               >
                 {busy
-                  ? 'Aplicando…'
+                  ? 'Applying…'
                   : target.kind === 'rule'
-                    ? 'Eliminar regla'
+                    ? 'Remove rule'
                     : target.kind === 'lock'
-                      ? 'Bloquear cuenta'
-                      : 'Desbloquear cuenta'}
+                      ? 'Lock account'
+                      : 'Unlock account'}
               </button>
             </footer>
           </div>

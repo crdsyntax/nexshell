@@ -32,9 +32,9 @@ vi.mock('@/services/security.service', () => ({
 import { SudoersView } from '../views/SudoersView'
 
 describe('SudoersView', () => {
-  it('muestra reglas y estado de visudo', async () => {
+  it('renders rules and visudo validation status', async () => {
     render(<SudoersView profileId="p1" />)
-    expect(await screen.findByText(/Leer sudoers/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Read sudoers/i)).toBeInTheDocument()
     expect(await screen.findByText(/visudo -c: syntax valid/i)).toBeInTheDocument()
     expect((await screen.findAllByText('root')).length).toBeGreaterThan(0)
   })
