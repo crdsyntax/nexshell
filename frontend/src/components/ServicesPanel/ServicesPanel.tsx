@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { serviceManager } from '@/services/services.service'
 import { ServiceChip } from '@/components/ServiceChip'
@@ -7,6 +7,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FileIcon,
+  InfoIcon,
   PlayIcon,
   RefreshIcon,
   RestartIcon,
@@ -60,6 +61,20 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
   const [statusDetailsOpen, setStatusDetailsOpen] = useState(false)
   const [logs, setLogs] = useState<string | null>(null)
   const [configNonce, setConfigNonce] = useState(0)
+
+  const gutterRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const lineCount = useMemo(() => {
+    if (!content) return 1
+    return content.split('\n').length
+  }, [content])
+
+  const handleEditorScroll = () => {
+    if (gutterRef.current && textareaRef.current) {
+      gutterRef.current.scrollTop = textareaRef.current.scrollTop
+    }
+  }
 
   const profile = profiles.find((item) => item.id === profileId)
   const server = servers[profileId]
@@ -394,21 +409,23 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
             <span
               className={`status-chip ${currentStatus?.active ? 'is-online' : 'is-offline'}`}
             >
-              {currentStatus?.state ?? 'unknown'}
+              <span className="status-chip__dot" />
+              {currentStatus?.state ? currentStatus.state.toUpperCase() : 'UNKNOWN'}
             </span>
-            <span className="mono">{current.serviceUnit}</span>
+            <span className="service-status-tag mono">{current.serviceUnit}</span>
             {currentStatus?.pid && (
-              <span className="mono meta-dim">pid {currentStatus.pid}</span>
+              <span className="service-status-tag mono">PID {currentStatus.pid}</span>
             )}
-            <span className="mono meta-dim service-status-path">
+            <span className="service-status-tag service-status-path mono" title={current.configFile}>
               {current.configFile}
             </span>
             {currentStatus?.detail && (
               <button
-                className="text-button"
+                className="service-status-toggle"
                 onClick={() => setStatusDetailsOpen((value) => !value)}
               >
-                {statusDetailsOpen ? 'Hide status' : 'Status details'}
+                <InfoIcon size={12} />
+                <span>{statusDetailsOpen ? 'Ocultar estado' : 'Detalles systemd'}</span>
               </button>
             )}
           </div>
@@ -452,11 +469,12 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
           <div className="config-workspace">
             <aside className="config-list">
               <div className="section-title">
-                <h3>Config files</h3>
+                <h3>Archivos de configuración</h3>
+                <span className="config-list__count mono">{configs.length}</span>
                 <button
                   className="icon-button"
                   onClick={() => setConfigNonce((value) => value + 1)}
-                  title="Reload file list"
+                  title="Recargar lista de archivos"
                 >
                   <RefreshIcon size={13} />
                 </button>
@@ -471,7 +489,7 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                   >
                     <FileIcon size={13} />
                     <span className="config-item__name">{basename(file.path)}</span>
-                    <span className="config-item__size">{file.size} B</span>
+                    <span className="config-item__size mono">{file.size} B</span>
                   </button>
                 ))}
                 {configs.length === 0 && (
@@ -482,9 +500,17 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
 
             <section className="config-editor">
               <div className="config-editor__head">
-                <span className="mono">{configPath || 'select a file'}</span>
+                <div className="config-editor__path-badge">
+                  <FileIcon size={13} />
+                  <span className="mono">{configPath || 'Selecciona un archivo'}</span>
+                  {configPath && (
+                    <span className="config-editor__lines-count mono">
+                      {lineCount} {lineCount === 1 ? 'línea' : 'líneas'}
+                    </span>
+                  )}
+                </div>
                 <div className="config-editor__actions">
-                  {dirty && <span className="dirty-badge">modified</span>}
+                  {dirty && <span className="dirty-badge">MODIFICADO</span>}
                   <button
                     className="top-action"
                     onClick={() => {
@@ -493,6 +519,7 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                       setResultExpanded(false)
                     }}
                     disabled={!dirty || saving}
+                    title="Restaurar contenido original"
                   >
                     Revert
                   </button>
@@ -502,7 +529,7 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                     disabled={!configPath || !dirty || saving}
                   >
                     <SaveIcon size={13} />
-                    {saving ? 'Validating…' : 'Save & test'}
+                    {saving ? 'Validando…' : 'Save & test'}
                   </button>
                 </div>
               </div>
@@ -527,13 +554,33 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                   </button>
                 </div>
               ) : (
-                <textarea
-                  className="config-textarea"
-                  value={configLoading ? 'loading…' : content}
-                  onChange={(event) => setContent(event.target.value)}
-                  spellCheck={false}
-                  disabled={configLoading || !configPath}
-                />
+                <div className="config-editor__body">
+                  <div
+                    ref={gutterRef}
+                    className="config-editor__gutter"
+                    aria-hidden="true"
+                  >
+                    {Array.from({ length: lineCount }, (_, i) => (
+                      <div key={i + 1} className="config-editor__line-no mono">
+                        {i + 1}
+                      </div>
+                    ))}
+                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    className="config-textarea"
+                    value={configLoading ? 'loading…' : content}
+                    onChange={(event) => setContent(event.target.value)}
+                    onScroll={handleEditorScroll}
+                    spellCheck={false}
+                    disabled={configLoading || !configPath}
+                    placeholder={
+                      configPath
+                        ? 'Archivo vacío'
+                        : 'Selecciona un archivo de configuración para inspeccionar o editar su contenido.'
+                    }
+                  />
+                </div>
               )}
             </section>
           </div>
