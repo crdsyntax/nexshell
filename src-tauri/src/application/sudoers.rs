@@ -1,5 +1,5 @@
 use crate::application::pool::PoolManager;
-use crate::application::services::shell_quote;
+use crate::application::services::{as_root, shell_quote};
 use crate::error::{AppError, AppResult};
 use crate::models::{ConnectionProfile, SudoAccount, SudoGroup, SudoRule, SudoersReport};
 use chrono::Utc;
@@ -81,6 +81,12 @@ impl SudoersManager {
         for rule in &rules {
             if !rule.principal.starts_with('%') && !users.contains(&rule.principal) {
                 users.push(rule.principal.clone());
+            }
+        }
+        for root_user in section(&sections, "ROOT") {
+            let u = root_user.trim();
+            if !u.is_empty() && !users.contains(&u.to_string()) {
+                users.push(u.to_string());
             }
         }
         users.sort();
@@ -396,15 +402,6 @@ fn parse_rule(line: &str, source: &str) -> Option<SudoRule> {
     })
 }
 
-fn as_root(profile: &ConnectionProfile, script: &str) -> String {
-    if profile.username == "root" {
-        script.to_string()
-    } else if profile.elevated {
-        format!("sudo -n sh -c {}", shell_quote(script))
-    } else {
-        script.to_string()
-    }
-}
 
 fn collect_sections(output: &str) -> std::collections::HashMap<String, Vec<String>> {
     let mut sections: std::collections::HashMap<String, Vec<String>> =

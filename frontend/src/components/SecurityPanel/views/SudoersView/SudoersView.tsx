@@ -10,8 +10,13 @@ import {
 } from '@/components/Icons'
 
 import { useSudoersView } from './useSudoersView'
+import { useAppStore } from '@/store/useAppStore'
 
 export function SudoersView({ profileId }: { profileId: string }) {
+  const profiles = useAppStore((state) => state.profiles)
+  const pushToast = useAppStore((state) => state.pushToast)
+  const profile = profiles.find((item) => item.id === profileId)
+
   const {
     actionError,
     apply,
@@ -33,6 +38,14 @@ export function SudoersView({ profileId }: { profileId: string }) {
     setTarget,
     target,
   } = useSudoersView(profileId)
+
+  const isPermissionDenied = Boolean(
+    report &&
+      !report.configOk &&
+      (report.configOutput.toLowerCase().includes('permission denied') ||
+        report.configOutput.toLowerCase().includes('unable to open /etc/sudoers') ||
+        report.configOutput.toLowerCase().includes('a password is required')),
+  )
 
   return (
     <div className="security-view">
@@ -71,6 +84,54 @@ export function SudoersView({ profileId }: { profileId: string }) {
 
       {report && (
         <>
+          {isPermissionDenied && (
+            <div className="sudoers-permission-alert">
+              <div className="sudoers-permission-alert__icon">
+                <AlertIcon size={20} />
+              </div>
+              <div className="sudoers-permission-alert__body">
+                <h4>Permisos insuficientes para auditar sudoers</h4>
+                <p>
+                  El usuario de la sesión SSH actual (<strong>{profile?.username || 'usuario'}</strong>) no posee privilegios de superusuario (root/sudo) para leer <code>/etc/sudoers</code>.
+                </p>
+                <div className="sudoers-permission-alert__details mono">
+                  {report.configOutput}
+                </div>
+                <div className="sudoers-permission-alert__solutions">
+                  <strong>¿Cómo visualizar las reglas y usuarios de sudoers?</strong>
+                  <ol>
+                    <li>
+                      <strong>Conectarse como root:</strong> Inicia sesión o edita el perfil para conectar directamente con el usuario <code>root</code>.
+                    </li>
+                    <li>
+                      <strong>Habilitar elevación en el perfil:</strong> Si el usuario <code>{profile?.username || 'actual'}</code> dispone de acceso sudo en el servidor, edita el perfil de conexión y marca la opción <em>"Use sudo -n for service actions"</em>.
+                    </li>
+                    <li>
+                      <strong>Otorga permisos de lectura en el servidor:</strong> Si administras el servidor, añade a este usuario al grupo <code>wheel</code> o añade una regla NOPASSWD:
+                      <div className="command-result__copy-snippet" style={{ marginTop: 6 }}>
+                        <code>
+                          {`echo "${profile?.username || 'usuario'} ALL=(ALL) NOPASSWD: /usr/sbin/visudo, /bin/cat /etc/sudoers, /bin/cat /etc/sudoers.d/*" | sudo tee /etc/sudoers.d/2shell-audit`}
+                        </code>
+                        <button
+                          type="button"
+                          className="ghost-button ghost-button--xs"
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `echo "${profile?.username || 'usuario'} ALL=(ALL) NOPASSWD: /usr/sbin/visudo, /bin/cat /etc/sudoers, /bin/cat /etc/sudoers.d/*" | sudo tee /etc/sudoers.d/2shell-audit`,
+                            )
+                            pushToast('success', 'Regla de auditoría copiada al portapapeles')
+                          }}
+                        >
+                          Copiar regla
+                        </button>
+                      </div>
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          )}
+
           {nopasswd > 0 && (
             <div className="risk-banner">
               <span className="risk-banner__icon">
@@ -203,7 +264,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
                     </div>
                   ))}
                   {report.accounts.length === 0 && (
-                    <div className="process-table__empty">Sin cuentas referenciadas.</div>
+                    <div className="process-table__empty">
+                      {isPermissionDenied
+                        ? 'No se pudieron resolver cuentas de sudoers: requiere privilegios de root/sudo.'
+                        : 'Sin cuentas referenciadas.'}
+                    </div>
                   )}
                 </div>
               </section>
@@ -279,7 +344,11 @@ export function SudoersView({ profileId }: { profileId: string }) {
                     </div>
                   ))}
                   {report.rules.length === 0 && (
-                    <div className="process-table__empty">Sin reglas explícitas.</div>
+                    <div className="process-table__empty">
+                      {isPermissionDenied
+                        ? 'No se pudieron leer las reglas: permiso denegado en /etc/sudoers.'
+                        : 'Sin reglas explícitas.'}
+                    </div>
                   )}
                 </div>
                 <div className="sudoers-ledger">

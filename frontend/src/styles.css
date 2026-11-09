@@ -2278,6 +2278,67 @@ body.theme-dark .terminal-overlay__btn-secondary:hover:not(:disabled),
   white-space: nowrap;
 }
 
+.sudoers-permission-alert {
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  color: var(--fg);
+}
+
+.sudoers-permission-alert__icon {
+  color: #f87171;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sudoers-permission-alert__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sudoers-permission-alert__body h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f87171;
+}
+
+.sudoers-permission-alert__body p {
+  margin: 0 0 8px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.sudoers-permission-alert__details {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-soft);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: #fca5a5;
+  margin-bottom: 10px;
+}
+
+.sudoers-permission-alert__solutions {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.sudoers-permission-alert__solutions ol {
+  margin: 6px 0 0 16px;
+  padding: 0;
+}
+
+.sudoers-permission-alert__solutions li {
+  margin-bottom: 6px;
+}
+
 .config-workspace {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);

@@ -181,6 +181,35 @@ run_elevated() {{
     )
 }
 
+pub fn as_root(profile: &ConnectionProfile, script: &str) -> String {
+    if profile.username == "root" {
+        return script.to_string();
+    }
+    let pass_env = if let Some(ref pass) = profile.password {
+        format!("SUDO_PASS={}\nexport SUDO_PASS\n", shell_quote(pass))
+    } else {
+        String::new()
+    };
+    let is_elevated = if profile.elevated { "1" } else { "0" };
+    format!(
+        r#"{pass_env}IS_ELEVATED={is_elevated}
+if [ "$(id -u)" -eq 0 ]; then
+  sh -c {quoted}
+elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  sudo -n sh -c {quoted}
+elif [ -n "$SUDO_PASS" ] && command -v sudo >/dev/null 2>&1; then
+  printf '%s\n' "$SUDO_PASS" | sudo -S -p '' sh -c {quoted}
+elif [ "$IS_ELEVATED" = "1" ] && command -v sudo >/dev/null 2>&1; then
+  sudo -n sh -c {quoted}
+else
+  sh -c {quoted}
+fi"#,
+        pass_env = pass_env,
+        is_elevated = is_elevated,
+        quoted = shell_quote(script)
+    )
+}
+
 pub struct ServiceManager;
 
 impl ServiceManager {
