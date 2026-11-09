@@ -3719,29 +3719,31 @@ body.theme-dark .terminal-overlay__btn-secondary:hover:not(:disabled),
 .test-result {
   margin-top: 14px;
   border: 1px solid var(--border-soft);
-  border-radius: 0;
+  border-radius: var(--radius-sm, 6px);
   padding: 11px 12px;
   background: var(--bg-inset);
 }
 
 .test-result--ok {
   border-color: #abefc6;
+  background: #f6fef9;
 }
 
 .test-result--error {
-  border-color: #7c2d12;
+  border-color: #fecdca;
+  background: #fef3f2;
 }
 
 .test-result__head {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: var(--ok);
+  color: #027a48;
   font-size: 11.5px;
 }
 
 .test-result--error .test-result__head {
-  color: var(--danger);
+  color: var(--danger, #d92d20);
 }
 
 .test-result__latency {
@@ -3755,7 +3757,8 @@ body.theme-dark .terminal-overlay__btn-secondary:hover:not(:disabled),
   margin: 7px 0 0;
   font-size: 11px;
   line-height: 1.5;
-  color: #fca5a5;
+  color: #b42318;
+  word-break: break-word;
 }
 
 .test-result__grid {
@@ -12337,4 +12340,31 @@ body.theme-dark .connect-node:hover,
   background: #202637;
   border-color: #38bdf8;
   color: #38bdf8;
+}
+
+body.theme-dark .test-result--error,
+[data-theme='dark'] .test-result--error {
+  background: rgba(240, 68, 56, 0.08);
+  border-color: rgba(240, 68, 56, 0.35);
+}
+
+body.theme-dark .test-result--error .test-result__head,
+[data-theme='dark'] .test-result--error .test-result__head {
+  color: #f97066;
+}
+
+body.theme-dark .test-result > p,
+[data-theme='dark'] .test-result > p {
+  color: #fda29b;
+}
+
+body.theme-dark .test-result--ok,
+[data-theme='dark'] .test-result--ok {
+  background: rgba(18, 183, 106, 0.08);
+  border-color: rgba(18, 183, 106, 0.35);
+}
+
+body.theme-dark .test-result--ok .test-result__head,
+[data-theme='dark'] .test-result--ok .test-result__head {
+  color: #6ce9a6;
 }
