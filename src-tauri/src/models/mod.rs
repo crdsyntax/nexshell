@@ -1110,6 +1110,7 @@ pub struct ConfigEntry {
     pub path: String,
     pub size: u64,
     pub modified: String,
+    pub is_symlink: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

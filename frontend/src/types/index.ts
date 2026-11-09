@@ -788,6 +788,7 @@ export interface ConfigEntry {
   path: string
   size: number
   modified: string
+  isSymlink?: boolean
 }
 
 export interface ConfigContent {

@@ -460,6 +460,42 @@ pub async fn service_config_write(
 }
 
 #[tauri::command]
+pub async fn service_dirs_list(
+    id: String,
+    service: String,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<String>> {
+    let profile = state.profiles.get(&id)?;
+    let service = WebService::parse(&service)?;
+    ServiceManager::dirs_list(&state.pools, &profile, service).await
+}
+
+#[tauri::command]
+pub async fn service_config_delete(
+    id: String,
+    service: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<ServiceActionResult> {
+    let profile = state.profiles.get(&id)?;
+    let service = WebService::parse(&service)?;
+    ServiceManager::config_delete(&state.pools, &profile, service, &path).await
+}
+
+#[tauri::command]
+pub async fn service_config_toggle_site(
+    id: String,
+    service: String,
+    site_name: String,
+    enable: bool,
+    state: State<'_, AppState>,
+) -> AppResult<ServiceActionResult> {
+    let profile = state.profiles.get(&id)?;
+    let service = WebService::parse(&service)?;
+    ServiceManager::config_toggle_site(&state.pools, &profile, service, &site_name, enable).await
+}
+
+#[tauri::command]
 pub async fn service_logs(
     id: String,
     service: String,

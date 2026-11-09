@@ -7,15 +7,19 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FileIcon,
+  FolderIcon,
   InfoIcon,
   PlayIcon,
+  PlusIcon,
   RefreshIcon,
   RestartIcon,
   SaveIcon,
   ServerIcon,
   StopIcon,
+  TrashIcon,
 } from '@/components/Icons'
 import { basename } from '@/lib/format'
+import { CreateConfigModal } from './CreateConfigModal'
 import type {
   ConfigEntry,
   ServiceActionResult,
@@ -49,6 +53,13 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
   const [detecting, setDetecting] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [configs, setConfigs] = useState<ConfigEntry[]>([])
+  const [dirs, setDirs] = useState<string[]>([])
+  const [selectedFolder, setSelectedFolder] = useState<string>('all')
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [createModalInitialDir, setCreateModalInitialDir] = useState<string | undefined>(undefined)
+  const [togglingSite, setTogglingSite] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [configPath, setConfigPath] = useState('')
   const [content, setContent] = useState('')
   const [original, setOriginal] = useState('')
@@ -128,6 +139,8 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     setSelected(null)
     setPinnedChip(null)
     setConfigs([])
+    setDirs([])
+    setSelectedFolder('all')
     setConfigPath('')
     setContent('')
     setOriginal('')
@@ -153,6 +166,7 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     setResult(null)
     setLogs(null)
     setConfigError(null)
+    setSelectedFolder('all')
   }, [selected])
 
   useEffect(() => {
@@ -200,13 +214,18 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
   useEffect(() => {
     if (!selected) return
     let active = true
-    serviceManager
-      .configList(profileId, selected)
-      .then((list) => {
+    Promise.all([
+      serviceManager.configList(profileId, selected),
+      serviceManager.dirsList(profileId, selected).catch(() => []),
+    ])
+      .then(([list, dirList]) => {
         if (!active) return
         setConfigs(list)
+        setDirs(dirList)
         if (list.length > 0) {
-          void loadConfig(list[0].path)
+          if (!configPath || !list.some((item) => item.path === configPath)) {
+            void loadConfig(list[0].path)
+          }
         } else {
           setConfigPath('')
           setContent('')
@@ -219,7 +238,7 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     return () => {
       active = false
     }
-  }, [profileId, selected, configNonce])
+  }, [profileId, selected, configNonce, loadConfig, configPath, pushToast])
 
   const runAction = async (action: string) => {
     if (!selected) return
@@ -284,6 +303,130 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     } catch (error) {
       pushToast('error', String(error))
     }
+  }
+
+  const isSitesAvailable = configPath.includes('/sites-available/')
+  const siteBaseName = basename(configPath)
+  const isSiteEnabled = useMemo(() => {
+    if (!isSitesAvailable) return false
+    return configs.some(
+      (c) => c.path.includes('/sites-enabled/') && basename(c.path) === siteBaseName,
+    )
+  }, [configs, isSitesAvailable, siteBaseName])
+
+  const isPrimaryConfig = current?.configFile === configPath
+
+  const folderGroups = useMemo(() => {
+    const root =
+      current?.configRoot ||
+      (selected === 'nginx'
+        ? '/etc/nginx'
+        : selected === 'apache2'
+        ? '/etc/apache2'
+        : '/etc/httpd')
+    const allDirs = Array.from(new Set([root, ...dirs]))
+
+    allDirs.sort((a, b) => {
+      if (a === root) return -1
+      if (b === root) return 1
+      return a.localeCompare(b)
+    })
+
+    const dirMap = new Map<string, ConfigEntry[]>()
+    allDirs.forEach((d) => dirMap.set(d, []))
+
+    configs.forEach((file) => {
+      const lastSlash = file.path.lastIndexOf('/')
+      const fileDir = lastSlash > 0 ? file.path.slice(0, lastSlash) : root
+      if (!dirMap.has(fileDir)) {
+        dirMap.set(fileDir, [])
+      }
+      dirMap.get(fileDir)!.push(file)
+    })
+
+    const groups: { dir: string; label: string; files: ConfigEntry[] }[] = []
+    dirMap.forEach((files, dir) => {
+      const label = dir === root ? 'raíz' : dir.replace(root + '/', '')
+      groups.push({ dir, label, files })
+    })
+    return groups
+  }, [current?.configRoot, selected, dirs, configs])
+
+  const displayedGroups = useMemo(() => {
+    if (!selectedFolder || selectedFolder === 'all') return folderGroups
+    return folderGroups.filter((g) => g.dir === selectedFolder)
+  }, [folderGroups, selectedFolder])
+
+  const toggleFolderCollapse = (dir: string) => {
+    setCollapsedFolders((prev) => ({ ...prev, [dir]: !prev[dir] }))
+  }
+
+  const handleToggleSite = async () => {
+    if (!selected || !configPath || !isSitesAvailable || togglingSite) return
+    setTogglingSite(true)
+    try {
+      const nextState = !isSiteEnabled
+      const res = await serviceManager.configToggleSite(
+        profileId,
+        selected,
+        siteBaseName,
+        nextState,
+      )
+      if (res.ok) {
+        pushToast(
+          'success',
+          nextState
+            ? `Sitio "${siteBaseName}" habilitado en sites-enabled.`
+            : `Sitio "${siteBaseName}" deshabilitado.`,
+        )
+        setConfigNonce((v) => v + 1)
+      } else {
+        pushToast('error', `Error al alternar sitio: ${res.output}`)
+      }
+    } catch (err) {
+      pushToast('error', String(err))
+    } finally {
+      setTogglingSite(false)
+    }
+  }
+
+  const handleDeleteConfig = async () => {
+    if (!selected || !configPath || isPrimaryConfig || deleting) return
+    const name = basename(configPath)
+    const confirmed = window.confirm(
+      `¿Deseas eliminar permanentemente "${name}"?\nSe ejecutará una verificación de sintaxis con rollback automático si la prueba falla.`,
+    )
+    if (!confirmed) return
+
+    setDeleting(true)
+    try {
+      const res = await serviceManager.configDelete(profileId, selected, configPath)
+      if (res.ok) {
+        pushToast('success', `Archivo "${name}" eliminado correctamente.`)
+        setConfigPath('')
+        setContent('')
+        setOriginal('')
+        setConfigNonce((v) => v + 1)
+      } else {
+        pushToast('error', `No se pudo eliminar: ${res.output}`)
+      }
+    } catch (err) {
+      pushToast('error', String(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleOpenCreateModal = (dir?: string) => {
+    setCreateModalInitialDir(dir)
+    setCreateModalOpen(true)
+  }
+
+  const handleConfigCreated = (newPath: string) => {
+    setConfigNonce((v) => v + 1)
+    setTimeout(() => {
+      void loadConfig(newPath)
+    }, 300)
   }
 
   const dirty = content !== original
@@ -469,31 +612,151 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
           <div className="config-workspace">
             <aside className="config-list">
               <div className="section-title">
-                <h3>Archivos de configuración</h3>
-                <span className="config-list__count mono">{configs.length}</span>
-                <button
-                  className="icon-button"
-                  onClick={() => setConfigNonce((value) => value + 1)}
-                  title="Recargar lista de archivos"
-                >
-                  <RefreshIcon size={13} />
-                </button>
-              </div>
-              <div className="config-list__items">
-                {configs.map((file) => (
+                <div className="section-title__left">
+                  <h3>Configuraciones</h3>
+                  <span className="config-list__count mono">{configs.length}</span>
+                </div>
+                <div className="section-title__actions">
                   <button
-                    key={file.path}
-                    className={`config-item ${configPath === file.path ? 'is-active' : ''}`}
-                    onClick={() => void loadConfig(file.path)}
-                    title={file.path}
+                    className="icon-button"
+                    onClick={() => setConfigNonce((value) => value + 1)}
+                    title="Recargar lista de archivos y carpetas"
                   >
-                    <FileIcon size={13} />
-                    <span className="config-item__name">{basename(file.path)}</span>
-                    <span className="config-item__size mono">{file.size} B</span>
+                    <RefreshIcon size={13} />
                   </button>
-                ))}
+                  <button
+                    className="primary-button primary-button--small"
+                    onClick={() => handleOpenCreateModal()}
+                    title="Crear nuevo archivo de configuración"
+                  >
+                    <PlusIcon size={12} />
+                    <span>Nuevo</span>
+                  </button>
+                </div>
+              </div>
+
+              {folderGroups.length > 1 && (
+                <div className="config-folder-filters">
+                  <button
+                    className={`config-folder-filter-chip ${
+                      selectedFolder === 'all' ? 'is-active' : ''
+                    }`}
+                    onClick={() => setSelectedFolder('all')}
+                  >
+                    Todas ({configs.length})
+                  </button>
+                  {folderGroups.map((g) => (
+                    <button
+                      key={g.dir}
+                      className={`config-folder-filter-chip ${
+                        selectedFolder === g.dir ? 'is-active' : ''
+                      }`}
+                      onClick={() => setSelectedFolder(g.dir)}
+                      title={g.dir}
+                    >
+                      {g.label} ({g.files.length})
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="config-list__items">
+                {displayedGroups.map((group) => {
+                  const isCollapsed = collapsedFolders[group.dir] ?? false
+                  return (
+                    <div key={group.dir} className="config-folder-group">
+                      <div className="config-folder-header">
+                        <button
+                          type="button"
+                          className="config-folder-title-btn"
+                          onClick={() => toggleFolderCollapse(group.dir)}
+                          title={`Carpeta: ${group.dir}`}
+                        >
+                          <ChevronDownIcon
+                            size={12}
+                            className={isCollapsed ? 'chevron-collapsed' : ''}
+                          />
+                          <FolderIcon size={13} />
+                          <span className="config-folder-name">{group.label}</span>
+                          <span className="config-folder-badge mono">{group.files.length}</span>
+                        </button>
+                        <div className="config-folder-actions">
+                          <button
+                            type="button"
+                            className="config-folder-add-btn"
+                            onClick={() => handleOpenCreateModal(group.dir)}
+                            title={`Crear archivo en ${group.label}`}
+                          >
+                            <PlusIcon size={11} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {!isCollapsed && (
+                        <div className="config-folder-files">
+                          {group.files.map((file) => {
+                            const isAvailable = file.path.includes('/sites-available/')
+                            const isEnabled =
+                              isAvailable &&
+                              configs.some(
+                                (c) =>
+                                  c.path.includes('/sites-enabled/') &&
+                                  basename(c.path) === basename(file.path),
+                              )
+                            return (
+                              <button
+                                key={file.path}
+                                className={`config-item ${
+                                  configPath === file.path ? 'is-active' : ''
+                                }`}
+                                onClick={() => void loadConfig(file.path)}
+                                title={file.path}
+                              >
+                                {isAvailable && (
+                                  <span
+                                    className={`config-item__site-dot ${
+                                      isEnabled
+                                        ? 'config-item__site-dot--active'
+                                        : 'config-item__site-dot--inactive'
+                                    }`}
+                                    title={
+                                      isEnabled ? 'Habilitado en sites-enabled' : 'No habilitado'
+                                    }
+                                  />
+                                )}
+                                <FileIcon size={13} />
+                                <span className="config-item__name">{basename(file.path)}</span>
+                                {file.isSymlink && (
+                                  <span
+                                    className="config-item__badge-symlink"
+                                    title="Enlace simbólico"
+                                  >
+                                    symlink
+                                  </span>
+                                )}
+                                <span className="config-item__size mono">{file.size} B</span>
+                              </button>
+                            )
+                          })}
+                          {group.files.length === 0 && (
+                            <div className="config-folder-empty">
+                              <span>Sin archivos</span>
+                              <button
+                                type="button"
+                                className="ghost-button ghost-button--tiny"
+                                onClick={() => handleOpenCreateModal(group.dir)}
+                              >
+                                + Crear archivo
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
                 {configs.length === 0 && (
-                  <p className="config-list__empty">No .conf files found.</p>
+                  <p className="config-list__empty">No se encontraron archivos de configuración.</p>
                 )}
               </div>
             </aside>
@@ -510,6 +773,44 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                   )}
                 </div>
                 <div className="config-editor__actions">
+                  {isSitesAvailable && configPath && (
+                    <button
+                      type="button"
+                      className={`site-toggle-btn ${
+                        isSiteEnabled ? 'site-toggle-btn--enabled' : 'site-toggle-btn--disabled'
+                      }`}
+                      onClick={() => void handleToggleSite()}
+                      disabled={togglingSite || saving}
+                      title={
+                        isSiteEnabled
+                          ? 'Deshabilitar sitio (eliminar symlink en sites-enabled)'
+                          : 'Habilitar sitio (crear symlink en sites-enabled)'
+                      }
+                    >
+                      {isSiteEnabled ? <CheckIcon size={12} /> : <PlusIcon size={12} />}
+                      <span>
+                        {togglingSite
+                          ? 'Actualizando…'
+                          : isSiteEnabled
+                          ? 'Habilitado en sites-enabled'
+                          : 'Habilitar sitio'}
+                      </span>
+                    </button>
+                  )}
+
+                  {configPath && !isPrimaryConfig && (
+                    <button
+                      type="button"
+                      className="top-action top-action--danger"
+                      onClick={() => void handleDeleteConfig()}
+                      disabled={deleting || saving}
+                      title="Eliminar este archivo de configuración"
+                    >
+                      <TrashIcon size={12} />
+                      <span>{deleting ? 'Eliminando…' : 'Eliminar'}</span>
+                    </button>
+                  )}
+
                   {dirty && <span className="dirty-badge">MODIFICADO</span>}
                   <button
                     className="top-action"
@@ -604,6 +905,18 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
           </div>
           <pre>{logs || 'log file is empty or not readable'}</pre>
         </div>
+      )}
+
+      {createModalOpen && current && selected && (
+        <CreateConfigModal
+          profileId={profileId}
+          serviceName={selected}
+          configRoot={current.configRoot}
+          directories={dirs.length > 0 ? dirs : [current.configRoot]}
+          initialDirectory={createModalInitialDir}
+          onClose={() => setCreateModalOpen(false)}
+          onCreated={handleConfigCreated}
+        />
       )}
     </div>
   )

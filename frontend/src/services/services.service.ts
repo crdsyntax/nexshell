@@ -24,6 +24,17 @@ export const serviceManager = {
       path,
       content,
     }),
+  dirsList: (id: string, service: string) =>
+    ipc.invoke<string[]>('service_dirs_list', { id, service }),
+  configDelete: (id: string, service: string, path: string) =>
+    ipc.invoke<ServiceActionResult>('service_config_delete', { id, service, path }),
+  configToggleSite: (id: string, service: string, siteName: string, enable: boolean) =>
+    ipc.invoke<ServiceActionResult>('service_config_toggle_site', {
+      id,
+      service,
+      siteName,
+      enable,
+    }),
   logs: (id: string, service: string, lines = 200) =>
     ipc.invoke<string>('service_logs', { id, service, lines }),
 }

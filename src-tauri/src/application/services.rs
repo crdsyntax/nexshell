@@ -388,7 +388,11 @@ exit 127"#,
         let spec = service.spec();
         let find = maybe_sudo(profile, "find");
         let script = format!(
-            r#"{find} {root} -maxdepth 5 \( -type f -o -type l \) \( -name '*.conf' -o -name '*.vhost' -o -name '*.load' -o -name '*.inc' \) -printf '%p|%s|%TY-%Tm-%Td %TH:%TM\n' 2>/dev/null | sort | head -n {limit}
+            r#"{find} {root} -maxdepth 5 \( -type f -o -type l \) \
+! -name '*.bak' ! -name '*.old' ! -name '*~' ! -name '*.dpkg-*' ! -name '*.save' \
+\( -name '*.conf' -o -name '*.vhost' -o -name '*.load' -o -name '*.inc' -o -name '*.snippet' \
+-o -path '*/sites-available/*' -o -path '*/sites-enabled/*' -o -path '*/conf.d/*' -o -path '*/conf-available/*' -o -path '*/conf-enabled/*' -o -path '*/snippets/*' \) \
+-printf '%p|%s|%TY-%Tm-%Td %TH:%TM|%y\n' 2>/dev/null | sort | head -n {limit}
 exit 0"#,
             find = find,
             root = shell_quote(spec.config_root),
@@ -401,15 +405,19 @@ exit 0"#,
 
         let mut entries = Vec::new();
         for line in output.stdout.lines() {
-            let mut parts = line.splitn(3, '|');
+            let mut parts = line.splitn(4, '|');
             let path = parts.next().unwrap_or_default().trim();
             if path.is_empty() {
                 continue;
             }
+            let size = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+            let modified = parts.next().unwrap_or_default().trim().to_string();
+            let is_symlink = parts.next().map(|v| v.trim() == "l").unwrap_or(false);
             entries.push(ConfigEntry {
                 path: path.to_string(),
-                size: parts.next().and_then(|v| v.parse().ok()).unwrap_or(0),
-                modified: parts.next().unwrap_or_default().trim().to_string(),
+                size,
+                modified,
+                is_symlink,
             });
         }
         Ok(entries)
@@ -476,19 +484,24 @@ exit 0"#,
             .execute_service(
                 &profile.id,
                 &format!(
-                    "{test_binary} -f {} && echo yes || echo no",
+                    "{test_binary} -f {} || {test_binary} -L {} && echo yes || echo no",
+                    shell_quote(path),
                     shell_quote(path)
                 ),
                 Duration::from_secs(10),
             )
             .await?;
-        if exists.stdout.trim() != "yes" {
-            return Err(AppError::NotFound(format!(
-                "configuration file {path} does not exist"
-            )));
-        }
+        let is_existing = exists.stdout.trim() == "yes";
 
-        assert_canonical(pools, profile, service, path).await?;
+        if is_existing {
+            assert_canonical(pools, profile, service, path).await?;
+        } else {
+            let parent = std::path::Path::new(path)
+                .parent()
+                .and_then(|p| p.to_str())
+                .unwrap_or(spec.config_root);
+            validate_config_path(service, parent)?;
+        }
 
         let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
         let backup_path = format!("{path}.2shell-{timestamp}.bak");
@@ -499,9 +512,13 @@ exit 0"#,
 
         let cp = maybe_sudo(profile, "cp");
         let tee = maybe_sudo(profile, "tee");
+        let mkdir = maybe_sudo(profile, "mkdir");
+        let rm = maybe_sudo(profile, "rm");
         let test = maybe_sudo(profile, spec.test_command);
-        let write_script = format!(
-            r#"{cp} -p -- {path} {backup} || exit 1
+
+        let write_script = if is_existing {
+            format!(
+                r#"{cp} -p -- {path} {backup} || exit 1
 printf '%s' {encoded} | base64 -d | {tee} {path} >/dev/null || {{ {cp} -p -- {backup} {path}; exit 1; }}
 {test} 2>&1
 rc=$?
@@ -510,13 +527,33 @@ if [ $rc -ne 0 ]; then
   echo "--- configuration restored from backup ---"
 fi
 exit $rc"#,
-            cp = cp,
-            tee = tee,
-            path = shell_quote(path),
-            backup = shell_quote(&backup_path),
-            encoded = shell_quote(&encoded),
-            test = test
-        );
+                cp = cp,
+                tee = tee,
+                path = shell_quote(path),
+                backup = shell_quote(&backup_path),
+                encoded = shell_quote(&encoded),
+                test = test
+            )
+        } else {
+            format!(
+                r#"dir=$(dirname -- {path})
+{mkdir} -p -- "$dir" || exit 1
+printf '%s' {encoded} | base64 -d | {tee} {path} >/dev/null || exit 1
+{test} 2>&1
+rc=$?
+if [ $rc -ne 0 ]; then
+  {rm} -f -- {path}
+  echo "--- new configuration failed syntax test, file removed ---"
+fi
+exit $rc"#,
+                mkdir = mkdir,
+                tee = tee,
+                path = shell_quote(path),
+                encoded = shell_quote(&encoded),
+                test = test,
+                rm = rm
+            )
+        };
 
         let output = pools
             .execute_service(&profile.id, &write_script, Duration::from_secs(45))
@@ -525,18 +562,234 @@ exit $rc"#,
         let combined = format!("{}{}", output.stdout, output.stderr)
             .trim()
             .to_string();
-        let restored = combined.contains("configuration restored from backup");
+        let restored = combined.contains("configuration restored from backup")
+            || combined.contains("failed syntax test, file removed");
 
         Ok(ServiceActionResult {
-            ok: output.success(),
-            action: "write-config".to_string(),
+            ok: output.success() && !restored,
+            action: if is_existing {
+                "write-config".to_string()
+            } else {
+                "create-config".to_string()
+            },
             output: if combined.is_empty() {
                 "configuration saved and validated".to_string()
             } else {
                 combined
             },
             exit_code: output.exit_status,
-            backup_path: if restored { None } else { Some(backup_path) },
+            backup_path: if is_existing && !restored {
+                Some(backup_path)
+            } else {
+                None
+            },
+        })
+    }
+
+    pub async fn dirs_list(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        service: WebService,
+    ) -> AppResult<Vec<String>> {
+        let spec = service.spec();
+        let find = maybe_sudo(profile, "find");
+        let script = format!(
+            r#"{find} {root} -mindepth 1 -maxdepth 3 -type d 2>/dev/null | sort
+exit 0"#,
+            find = find,
+            root = shell_quote(spec.config_root),
+        );
+        let output = pools
+            .execute_service(&profile.id, &script, Duration::from_secs(15))
+            .await?;
+
+        let mut dirs: Vec<String> = output
+            .stdout
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        let standard_subdirs = match service {
+            WebService::Nginx => vec!["conf.d", "sites-available", "sites-enabled", "snippets"],
+            WebService::Apache2 => vec![
+                "sites-available",
+                "sites-enabled",
+                "conf-available",
+                "conf-enabled",
+                "mods-available",
+                "mods-enabled",
+            ],
+            WebService::Httpd => vec!["conf", "conf.d", "conf.modules.d"],
+        };
+        for sub in standard_subdirs {
+            let full = format!("{}/{}", spec.config_root.trim_end_matches('/'), sub);
+            if !dirs.contains(&full) {
+                dirs.push(full);
+            }
+        }
+        dirs.sort();
+        Ok(dirs)
+    }
+
+    pub async fn config_delete(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        service: WebService,
+        path: &str,
+    ) -> AppResult<ServiceActionResult> {
+        validate_config_path(service, path)?;
+        let spec = service.spec();
+        if path == spec.config_file {
+            return Err(AppError::Validation(format!(
+                "cannot delete primary configuration file '{path}'"
+            )));
+        }
+
+        let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
+        let backup_path = format!("{path}.2shell-{timestamp}.delbak");
+        let cp = maybe_sudo(profile, "cp");
+        let rm = maybe_sudo(profile, "rm");
+        let test = maybe_sudo(profile, spec.test_command);
+        let script = format!(
+            r#"{cp} -p -- {path} {backup} || exit 1
+{rm} -f -- {path} || exit 1
+{test} 2>&1
+rc=$?
+if [ $rc -ne 0 ]; then
+  {cp} -p -- {backup} {path}
+  echo "--- deletion aborted: syntax test failed, configuration restored ---"
+else
+  {rm} -f -- {backup}
+fi
+exit $rc"#,
+            cp = cp,
+            rm = rm,
+            path = shell_quote(path),
+            backup = shell_quote(&backup_path),
+            test = test
+        );
+
+        let output = pools
+            .execute_service(&profile.id, &script, Duration::from_secs(30))
+            .await?;
+
+        let combined = format!("{}{}", output.stdout, output.stderr)
+            .trim()
+            .to_string();
+        let restored = combined.contains("deletion aborted");
+
+        Ok(ServiceActionResult {
+            ok: output.success() && !restored,
+            action: "delete-config".to_string(),
+            output: if combined.is_empty() {
+                "file deleted and service configuration validated".to_string()
+            } else {
+                combined
+            },
+            exit_code: output.exit_status,
+            backup_path: None,
+        })
+    }
+
+    pub async fn config_toggle_site(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        service: WebService,
+        site_name: &str,
+        enable: bool,
+    ) -> AppResult<ServiceActionResult> {
+        let spec = service.spec();
+        if service != WebService::Nginx && service != WebService::Apache2 {
+            return Err(AppError::Validation(
+                "site enabling via symlinks is only supported for Nginx and Apache2".into(),
+            ));
+        }
+        if site_name.contains('/') || site_name.contains("..") || site_name.trim().is_empty() {
+            return Err(AppError::Validation("invalid site name".into()));
+        }
+
+        let ln = maybe_sudo(profile, "ln");
+        let rm = maybe_sudo(profile, "rm");
+        let mkdir = maybe_sudo(profile, "mkdir");
+        let test = maybe_sudo(profile, spec.test_command);
+
+        let root = spec.config_root.trim_end_matches('/');
+        let available = format!("{root}/sites-available/{site_name}");
+        let enabled = format!("{root}/sites-enabled/{site_name}");
+
+        let script = if enable {
+            format!(
+                r#"{mkdir} -p {root}/sites-enabled || exit 1
+if [ ! -f {available} ] && [ ! -L {available} ]; then
+  echo "site file not found in sites-available"
+  exit 1
+fi
+{ln} -sf {available} {enabled} || exit 1
+{test} 2>&1
+rc=$?
+if [ $rc -ne 0 ]; then
+  {rm} -f {enabled}
+  echo "--- site enablement failed syntax test, symlink removed ---"
+fi
+exit $rc"#,
+                mkdir = mkdir,
+                available = shell_quote(&available),
+                enabled = shell_quote(&enabled),
+                ln = ln,
+                test = test,
+                rm = rm,
+                root = shell_quote(root),
+            )
+        } else {
+            format!(
+                r#"if [ -L {enabled} ] || [ -f {enabled} ]; then
+  {rm} -f {enabled} || exit 1
+  {test} 2>&1
+  rc=$?
+  if [ $rc -ne 0 ]; then
+    {ln} -sf {available} {enabled}
+    echo "--- disabling site broke configuration, symlink restored ---"
+  fi
+  exit $rc
+else
+  echo "site is not enabled"
+  exit 0
+fi"#,
+                rm = rm,
+                enabled = shell_quote(&enabled),
+                test = test,
+                ln = ln,
+                available = shell_quote(&available),
+            )
+        };
+
+        let output = pools
+            .execute_service(&profile.id, &script, Duration::from_secs(30))
+            .await?;
+
+        let combined = format!("{}{}", output.stdout, output.stderr)
+            .trim()
+            .to_string();
+
+        Ok(ServiceActionResult {
+            ok: output.success(),
+            action: if enable {
+                "enable-site".to_string()
+            } else {
+                "disable-site".to_string()
+            },
+            output: if combined.is_empty() {
+                if enable {
+                    "site enabled and configuration validated".to_string()
+                } else {
+                    "site disabled and configuration validated".to_string()
+                }
+            } else {
+                combined
+            },
+            exit_code: output.exit_status,
+            backup_path: None,
         })
     }
 
