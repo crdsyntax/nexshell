@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import { attachTerminal, detachTerminal } from '@/lib/terminalBus'
 import { terminalService } from '@/services/terminal.service'
 import { useAppStore } from '@/store/useAppStore'
-import { AlertIcon, FolderIcon, RefreshIcon, TerminalIcon } from '@/components/Icons'
+import { AlertIcon, FolderIcon, PlugIcon, RefreshIcon, TerminalIcon, XIcon } from '@/components/Icons'
 import { FileTree } from '@/components/FileTree'
 import type { WorkspaceTab } from '@/types'
 
@@ -55,6 +55,23 @@ export function TerminalView({ tab }: TerminalViewProps) {
   const reconnectRef = useRef<() => void>(() => {})
   const mountedRef = useRef(false)
   const [treeOpen, setTreeOpen] = useState(true)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+
+  const profile = useAppStore((state) =>
+    state.profiles.find((p) => p.id === tab.profileId)
+  )
+  const closeTab = useAppStore((state) => state.closeTab)
+
+  useEffect(() => {
+    if (tab.status !== 'connecting') {
+      setIsReconnecting(false)
+    }
+  }, [tab.status])
+
+  const handleReconnect = () => {
+    setIsReconnecting(true)
+    reconnectRef.current()
+  }
 
   useEffect(() => {
     if (mountedRef.current || !containerRef.current) return
@@ -230,16 +247,75 @@ export function TerminalView({ tab }: TerminalViewProps) {
         )}
       </div>
       {(tab.status === 'closed' || tab.status === 'error') && (
-        <div className="terminal-overlay">
+        <div className="terminal-overlay" role="dialog" aria-modal="true" aria-label="Sesión desconectada">
           <div className="terminal-overlay__card">
-            <AlertIcon size={20} />
-            <strong>
-              {tab.status === 'error' ? 'Terminal error' : 'Session closed'}
-            </strong>
-            <p>{tab.error ?? 'The remote shell is no longer available.'}</p>
-            <button className="primary-button" onClick={() => reconnectRef.current()}>
-              <RefreshIcon size={15} /> Reconnect
-            </button>
+            <div className={`terminal-overlay__icon-badge is-${tab.status}`}>
+              {tab.status === 'error' ? (
+                <AlertIcon size={24} />
+              ) : (
+                <PlugIcon size={24} />
+              )}
+            </div>
+
+            <div className="terminal-overlay__meta">
+              <div className="terminal-overlay__badge-row">
+                <span className={`terminal-overlay__pill is-${tab.status}`}>
+                  <span className="terminal-overlay__pill-dot" />
+                  {tab.status === 'error' ? 'Error de conexión' : 'Sesión cerrada'}
+                </span>
+                {profile?.host && (
+                  <span className="terminal-overlay__host-pill mono">
+                    {profile.host}
+                  </span>
+                )}
+              </div>
+
+              <h3 className="terminal-overlay__title">
+                {tab.status === 'error' ? 'Conexión interrumpida' : 'Sesión SSH finalizada'}
+              </h3>
+
+              <div className="terminal-overlay__subtitle">
+                {profile ? (
+                  <span>
+                    Servidor: <strong className="mono">{profile.username}@{profile.host}:{profile.port}</strong>
+                  </span>
+                ) : (
+                  <span>Terminal: <strong>{tab.title}</strong></span>
+                )}
+              </div>
+            </div>
+
+            <div className="terminal-overlay__callout">
+              <div className="terminal-overlay__callout-header">
+                <span>Motivo / Estado</span>
+              </div>
+              <div className="terminal-overlay__callout-body mono">
+                {tab.error || (tab.status === 'error'
+                  ? 'Se produjo un error no controlado en el canal PTY.'
+                  : 'El host remoto cerró la conexión SSH o finalizó el proceso del shell.')}
+              </div>
+            </div>
+
+            <div className="terminal-overlay__actions">
+              <button
+                type="button"
+                className="terminal-overlay__btn-secondary"
+                onClick={() => closeTab(tab.id)}
+                title="Cerrar esta pestaña de terminal"
+              >
+                <XIcon size={14} />
+                <span>Cerrar pestaña</span>
+              </button>
+              <button
+                type="button"
+                className="terminal-overlay__btn-primary"
+                onClick={handleReconnect}
+                disabled={isReconnecting}
+              >
+                <RefreshIcon size={14} className={isReconnecting ? 'spin' : ''} />
+                <span>{isReconnecting ? 'Reconectando…' : 'Reconectar'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
