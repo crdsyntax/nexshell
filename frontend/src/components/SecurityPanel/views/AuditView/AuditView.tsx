@@ -1,7 +1,9 @@
 import {
   AlertIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   CopyIcon,
   InfoIcon,
   RefreshIcon,
@@ -486,62 +488,76 @@ function FindingRow({
               <CheckIcon size={12} /> Recommended remediation
             </span>
             {guide && (
-              <div className="remediation-tooltip-wrapper">
-                <button
-                  type="button"
-                  className={`remediation-guide-pill ${showGuide ? 'is-active' : ''}`}
-                  title="Click to view what this command does and why it is recommended"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setShowGuide((v) => !v)
-                  }}
-                >
-                  <InfoIcon size={11} />
-                  <span>Command Guide</span>
-                </button>
-                {showGuide && (
-                  <div
-                    className="remediation-guide-popover"
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                    }}
-                  >
-                    <div className="remediation-guide-popover__header">
-                      <div className="remediation-guide-popover__title">
-                        <TerminalIcon size={12} />
-                        <code>{guide.command}</code>
-                      </div>
-                      <button
-                        type="button"
-                        className="remediation-guide-popover__close"
-                        title="Close tooltip"
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          setShowGuide(false)
-                        }}
-                      >
-                        <XIcon size={11} />
-                      </button>
-                    </div>
-                    <div className="remediation-guide-popover__content">
-                      <div className="remediation-guide-field">
-                        <span className="remediation-guide-label">WHAT IT DOES (PURPOSE)</span>
-                        <p>{guide.purpose}</p>
-                      </div>
-                      <div className="remediation-guide-field">
-                        <span className="remediation-guide-label">WHY IT IS RECOMMENDED</span>
-                        <p>{guide.why}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                className={`remediation-guide-pill ${showGuide ? 'is-active' : ''}`}
+                title={`Command Guide: ${guide.command} — ${guide.purpose}`}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setShowGuide((v) => !v)
+                }}
+              >
+                <InfoIcon size={11} />
+                <span>Command Guide</span>
+                {showGuide ? <ChevronUpIcon size={10} /> : <ChevronDownIcon size={10} />}
+              </button>
             )}
           </div>
           <p>{finding.remediation}</p>
+
+          {guide && showGuide && (
+            <div
+              className="remediation-guide-card"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+            >
+              <div className="remediation-guide-card__header">
+                <div className="remediation-guide-card__title">
+                  <TerminalIcon size={12} />
+                  <code>{guide.command}</code>
+                </div>
+                <div className="remediation-guide-card__actions">
+                  <button
+                    type="button"
+                    className="remediation-guide-card__btn"
+                    title="Copy command to clipboard"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      void navigator.clipboard.writeText(guide.command)
+                    }}
+                  >
+                    <CopyIcon size={11} /> Copy
+                  </button>
+                  <button
+                    type="button"
+                    className="remediation-guide-card__close"
+                    title="Close guide"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setShowGuide(false)
+                    }}
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </div>
+              </div>
+              <div className="remediation-guide-card__content">
+                <div className="remediation-guide-field">
+                  <span className="remediation-guide-label">WHAT IT DOES (PURPOSE)</span>
+                  <p>{guide.purpose}</p>
+                </div>
+                <div className="remediation-guide-field">
+                  <span className="remediation-guide-label">WHY IT IS RECOMMENDED</span>
+                  <p>{guide.why}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </details>
