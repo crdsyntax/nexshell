@@ -6,6 +6,7 @@ import {
   AlertIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   FileIcon,
   FolderIcon,
   InfoIcon,
@@ -14,9 +15,11 @@ import {
   RefreshIcon,
   RestartIcon,
   SaveIcon,
+  SearchIcon,
   ServerIcon,
   StopIcon,
   TrashIcon,
+  XIcon,
 } from '@/components/Icons'
 import { basename } from '@/lib/format'
 import { CreateConfigModal } from './CreateConfigModal'
@@ -54,7 +57,7 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [configs, setConfigs] = useState<ConfigEntry[]>([])
   const [dirs, setDirs] = useState<string[]>([])
-  const [selectedFolder, setSelectedFolder] = useState<string>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createModalInitialDir, setCreateModalInitialDir] = useState<string | undefined>(undefined)
@@ -140,7 +143,8 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     setPinnedChip(null)
     setConfigs([])
     setDirs([])
-    setSelectedFolder('all')
+    setSearchQuery('')
+    setCollapsedFolders({})
     setConfigPath('')
     setContent('')
     setOriginal('')
@@ -166,7 +170,8 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     setResult(null)
     setLogs(null)
     setConfigError(null)
-    setSelectedFolder('all')
+    setSearchQuery('')
+    setCollapsedFolders({})
   }, [selected])
 
   useEffect(() => {
@@ -352,13 +357,55 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
     return groups
   }, [current?.configRoot, selected, dirs, configs])
 
-  const displayedGroups = useMemo(() => {
-    if (!selectedFolder || selectedFolder === 'all') return folderGroups
-    return folderGroups.filter((g) => g.dir === selectedFolder)
-  }, [folderGroups, selectedFolder])
+  const isFolderExpanded = useCallback(
+    (dir: string, fileCount: number): boolean => {
+      if (searchQuery.trim().length > 0) return true
+      if (collapsedFolders[dir] !== undefined) {
+        return !collapsedFolders[dir]
+      }
+      return fileCount > 0
+    },
+    [searchQuery, collapsedFolders],
+  )
 
-  const toggleFolderCollapse = (dir: string) => {
-    setCollapsedFolders((prev) => ({ ...prev, [dir]: !prev[dir] }))
+  const toggleFolderCollapse = (dir: string, fileCount: number) => {
+    const currentlyOpen = isFolderExpanded(dir, fileCount)
+    setCollapsedFolders((prev) => ({ ...prev, [dir]: currentlyOpen }))
+  }
+
+  const toggleAllFolders = () => {
+    const anyClosed = folderGroups.some((g) => !isFolderExpanded(g.dir, g.files.length))
+    const next: Record<string, boolean> = {}
+    folderGroups.forEach((g) => {
+      next[g.dir] = !anyClosed
+    })
+    setCollapsedFolders(next)
+  }
+
+  const filteredGroups = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return folderGroups
+
+    return folderGroups
+      .map((group) => {
+        const matchFolder = group.label.toLowerCase().includes(q)
+        if (matchFolder) return group
+        const matchingFiles = group.files.filter(
+          (f) =>
+            basename(f.path).toLowerCase().includes(q) ||
+            f.path.toLowerCase().includes(q),
+        )
+        return {
+          ...group,
+          files: matchingFiles,
+        }
+      })
+      .filter((group) => group.files.length > 0 || group.label.toLowerCase().includes(q))
+  }, [folderGroups, searchQuery])
+
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`
+    return `${(bytes / 1024).toFixed(1)} KB`
   }
 
   const handleToggleSite = async () => {
@@ -610,22 +657,33 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
           )}
 
           <div className="config-workspace">
-            <aside className="config-list">
-              <div className="section-title">
-                <div className="section-title__left">
-                  <h3>Configuraciones</h3>
-                  <span className="config-list__count mono">{configs.length}</span>
+            <aside className="config-list config-explorer">
+              <div className="config-tree-header">
+                <div className="config-tree-header__title">
+                  <FolderIcon size={14} className="config-tree-header__icon" />
+                  <span>Archivos</span>
+                  <span className="config-tree-count-pill mono">{configs.length}</span>
                 </div>
-                <div className="section-title__actions">
+                <div className="config-tree-header__actions">
                   <button
-                    className="icon-button"
+                    type="button"
+                    className="icon-button icon-button--subtle"
+                    onClick={toggleAllFolders}
+                    title="Alternar expandir / colapsar carpetas"
+                  >
+                    <ChevronDownIcon size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button icon-button--subtle"
                     onClick={() => setConfigNonce((value) => value + 1)}
-                    title="Recargar lista de archivos y carpetas"
+                    title="Recargar archivos"
                   >
                     <RefreshIcon size={13} />
                   </button>
                   <button
-                    className="primary-button primary-button--small"
+                    type="button"
+                    className="primary-button primary-button--small config-tree-new-btn"
                     onClick={() => handleOpenCreateModal()}
                     title="Crear nuevo archivo de configuración"
                   >
@@ -635,65 +693,67 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                 </div>
               </div>
 
-              {folderGroups.length > 1 && (
-                <div className="config-folder-filters">
+              <div className="config-tree-search">
+                <SearchIcon size={12} className="config-tree-search__icon" />
+                <input
+                  type="text"
+                  placeholder="Buscar archivo o carpeta…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  spellCheck={false}
+                />
+                {searchQuery && (
                   <button
-                    className={`config-folder-filter-chip ${
-                      selectedFolder === 'all' ? 'is-active' : ''
-                    }`}
-                    onClick={() => setSelectedFolder('all')}
+                    type="button"
+                    className="config-tree-search__clear"
+                    onClick={() => setSearchQuery('')}
+                    title="Limpiar filtro"
                   >
-                    Todas ({configs.length})
+                    <XIcon size={11} />
                   </button>
-                  {folderGroups.map((g) => (
-                    <button
-                      key={g.dir}
-                      className={`config-folder-filter-chip ${
-                        selectedFolder === g.dir ? 'is-active' : ''
-                      }`}
-                      onClick={() => setSelectedFolder(g.dir)}
-                      title={g.dir}
-                    >
-                      {g.label} ({g.files.length})
-                    </button>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
 
-              <div className="config-list__items">
-                {displayedGroups.map((group) => {
-                  const isCollapsed = collapsedFolders[group.dir] ?? false
+              <div className="config-tree-body">
+                {filteredGroups.map((group) => {
+                  const isOpen = isFolderExpanded(group.dir, group.files.length)
+                  const isEmpty = group.files.length === 0
                   return (
-                    <div key={group.dir} className="config-folder-group">
-                      <div className="config-folder-header">
+                    <div
+                      key={group.dir}
+                      className={`config-tree-node ${isEmpty ? 'is-empty' : ''}`}
+                    >
+                      <div
+                        className="config-tree-folder-row"
+                        onClick={() => toggleFolderCollapse(group.dir, group.files.length)}
+                      >
+                        <span className={`config-tree-chevron ${isOpen ? 'is-open' : ''}`}>
+                          <ChevronRightIcon size={11} />
+                        </span>
+                        <FolderIcon
+                          size={13}
+                          className={`config-tree-folder-icon ${isOpen ? 'is-open' : ''}`}
+                        />
+                        <span className="config-tree-folder-name" title={group.dir}>
+                          {group.label}
+                        </span>
+                        <span className="config-tree-folder-count mono">{group.files.length}</span>
+
                         <button
                           type="button"
-                          className="config-folder-title-btn"
-                          onClick={() => toggleFolderCollapse(group.dir)}
-                          title={`Carpeta: ${group.dir}`}
+                          className="config-tree-folder-add-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleOpenCreateModal(group.dir)
+                          }}
+                          title={`Crear archivo en ${group.label}`}
                         >
-                          <ChevronDownIcon
-                            size={12}
-                            className={isCollapsed ? 'chevron-collapsed' : ''}
-                          />
-                          <FolderIcon size={13} />
-                          <span className="config-folder-name">{group.label}</span>
-                          <span className="config-folder-badge mono">{group.files.length}</span>
+                          <PlusIcon size={11} />
                         </button>
-                        <div className="config-folder-actions">
-                          <button
-                            type="button"
-                            className="config-folder-add-btn"
-                            onClick={() => handleOpenCreateModal(group.dir)}
-                            title={`Crear archivo en ${group.label}`}
-                          >
-                            <PlusIcon size={11} />
-                          </button>
-                        </div>
                       </div>
 
-                      {!isCollapsed && (
-                        <div className="config-folder-files">
+                      {isOpen && (
+                        <div className="config-tree-children">
                           {group.files.map((file) => {
                             const isAvailable = file.path.includes('/sites-available/')
                             const isEnabled =
@@ -703,47 +763,50 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                                   c.path.includes('/sites-enabled/') &&
                                   basename(c.path) === basename(file.path),
                               )
+                            const isActive = configPath === file.path
+
                             return (
                               <button
                                 key={file.path}
-                                className={`config-item ${
-                                  configPath === file.path ? 'is-active' : ''
-                                }`}
+                                type="button"
+                                className={`config-tree-file-row ${isActive ? 'is-active' : ''}`}
                                 onClick={() => void loadConfig(file.path)}
                                 title={file.path}
                               >
                                 {isAvailable && (
                                   <span
-                                    className={`config-item__site-dot ${
-                                      isEnabled
-                                        ? 'config-item__site-dot--active'
-                                        : 'config-item__site-dot--inactive'
+                                    className={`config-site-indicator ${
+                                      isEnabled ? 'is-enabled' : 'is-disabled'
                                     }`}
                                     title={
-                                      isEnabled ? 'Habilitado en sites-enabled' : 'No habilitado'
+                                      isEnabled
+                                        ? 'Habilitado en sites-enabled'
+                                        : 'No habilitado en sites-enabled'
                                     }
                                   />
                                 )}
-                                <FileIcon size={13} />
-                                <span className="config-item__name">{basename(file.path)}</span>
+                                <FileIcon size={12} className="config-tree-file-icon" />
+                                <span className="config-tree-file-name">{basename(file.path)}</span>
                                 {file.isSymlink && (
                                   <span
-                                    className="config-item__badge-symlink"
+                                    className="config-tree-symlink-tag"
                                     title="Enlace simbólico"
                                   >
-                                    symlink
+                                    link
                                   </span>
                                 )}
-                                <span className="config-item__size mono">{file.size} B</span>
+                                <span className="config-tree-file-size mono">
+                                  {formatSize(file.size)}
+                                </span>
                               </button>
                             )
                           })}
-                          {group.files.length === 0 && (
-                            <div className="config-folder-empty">
-                              <span>Sin archivos</span>
+                          {isEmpty && (
+                            <div className="config-tree-empty-folder">
+                              <span>Carpeta vacía</span>
                               <button
                                 type="button"
-                                className="ghost-button ghost-button--tiny"
+                                className="config-tree-empty-add"
                                 onClick={() => handleOpenCreateModal(group.dir)}
                               >
                                 + Crear archivo
@@ -755,8 +818,20 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                     </div>
                   )
                 })}
-                {configs.length === 0 && (
-                  <p className="config-list__empty">No se encontraron archivos de configuración.</p>
+
+                {filteredGroups.length === 0 && (
+                  <div className="config-tree-no-results">
+                    <span>No se encontraron archivos</span>
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        className="ghost-button ghost-button--tiny"
+                        onClick={() => setSearchQuery('')}
+                      >
+                        Limpiar búsqueda
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </aside>
