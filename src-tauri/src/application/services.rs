@@ -135,11 +135,50 @@ pub fn shell_quote(value: &str) -> String {
 }
 
 pub(crate) fn maybe_sudo(profile: &ConnectionProfile, command: &str) -> String {
-    if profile.elevated {
+    if profile.username == "root" {
+        command.to_string()
+    } else if profile.elevated {
         format!("sudo -n {command}")
     } else {
         command.to_string()
     }
+}
+
+pub(crate) fn elevation_preamble(profile: &ConnectionProfile) -> String {
+    let pass_env = if let Some(ref pass) = profile.password {
+        format!("SUDO_PASS={}\nexport SUDO_PASS\n", shell_quote(pass))
+    } else {
+        String::new()
+    };
+    let is_elevated = if profile.elevated { "1" } else { "0" };
+    format!(
+        r#"{pass_env}IS_ELEVATED={is_elevated}
+run_elevated() {{
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+    return $?
+  fi
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo -n "$@"
+    return $?
+  fi
+  if [ -n "$SUDO_PASS" ] && command -v sudo >/dev/null 2>&1; then
+    out=$(printf '%s\n' "$SUDO_PASS" | sudo -S -p '' "$@" 2>&1)
+    rc=$?
+    if [ $rc -eq 0 ]; then
+      [ -n "$out" ] && printf '%s\n' "$out"
+      return 0
+    fi
+  fi
+  if [ "$IS_ELEVATED" = "1" ] && command -v sudo >/dev/null 2>&1; then
+    sudo -n "$@"
+    return $?
+  fi
+  "$@"
+  return $?
+}}
+"#
+    )
 }
 
 pub struct ServiceManager;
@@ -208,25 +247,22 @@ exit 0"#;
         service: WebService,
     ) -> AppResult<ServiceStatus> {
         let spec = service.spec();
-        let is_active = maybe_sudo(profile, &format!("systemctl is-active {}", spec.unit));
-        let status = maybe_sudo(
-            profile,
-            &format!("systemctl status {} --no-pager -n 4", spec.unit),
-        );
+        let preamble = elevation_preamble(profile);
         let script = format!(
-            r#"export LC_ALL=C 2>/dev/null
+            r#"{preamble}
+export LC_ALL=C 2>/dev/null
 command -v {binary} >/dev/null 2>&1 && echo "__INSTALLED__1" || echo "__INSTALLED__0"
-state=$({is_active} 2>/dev/null || true)
+state=$(run_elevated systemctl is-active {unit} 2>/dev/null || true)
 [ -z "$state" ] && {{ pgrep -x {binary} >/dev/null 2>&1 && state=active || state=inactive; }}
 echo "__STATE__$state"
 pid=$(pgrep -x {binary} 2>/dev/null | head -n1)
 echo "__PID__$pid"
 echo "__DETAIL__"
-{status} 2>&1 | head -n 8
+run_elevated systemctl status {unit} --no-pager -n 4 2>&1 | head -n 8
 exit 0"#,
+            preamble = preamble,
             binary = spec.binary,
-            is_active = is_active,
-            status = status
+            unit = spec.unit
         );
 
         let output = pools
@@ -297,29 +333,27 @@ exit 0"#,
         }
 
         let verb = action.as_str();
-        let systemctl = maybe_sudo(profile, "systemctl");
-        let service_cmd = maybe_sudo(profile, "service");
-        let fallback = maybe_sudo(profile, spec.reload_fallback);
+        let preamble = elevation_preamble(profile);
         let script = format!(
-            r#"rc=1
+            r#"{preamble}
+rc=1
 if command -v systemctl >/dev/null 2>&1; then
-  {systemctl} {verb} {unit} 2>&1
+  run_elevated systemctl --no-ask-password {verb} {unit} 2>&1
   rc=$?
 fi
-if [ $rc -ne 0 ]; then
-  {service_cmd} {unit} {verb} 2>&1
+if [ $rc -ne 0 ] && ! command -v systemctl >/dev/null 2>&1 && command -v service >/dev/null 2>&1; then
+  run_elevated service {unit} {verb} 2>&1
   rc=$?
 fi
 if [ $rc -ne 0 ] && [ "{verb}" = "reload" ]; then
-  {fallback} 2>&1
+  run_elevated {fallback} 2>&1
   rc=$?
 fi
 exit $rc"#,
-            systemctl = systemctl,
-            service_cmd = service_cmd,
+            preamble = preamble,
             verb = verb,
             unit = spec.unit,
-            fallback = fallback
+            fallback = spec.reload_fallback
         );
 
         let output = pools
@@ -327,21 +361,20 @@ exit $rc"#,
             .await?;
 
         let combined = format!("{}{}", output.stdout, output.stderr);
-        if profile.elevated && combined.contains("a password is required") {
-            return Err(AppError::Validation(
-                "sudo requires a password. Configure passwordless sudo (NOPASSWD) for the service commands or disable the elevated flag."
-                    .into(),
-            ));
-        }
+        let trimmed = combined.trim();
+
+        let output_text = if !output.success() {
+            describe_action_failure(trimmed, &profile.username, action.as_str(), spec.name)
+        } else if trimmed.is_empty() {
+            format!("{} {} completed", spec.name, action.as_str())
+        } else {
+            trimmed.to_string()
+        };
 
         Ok(ServiceActionResult {
             ok: output.success(),
             action: action.as_str().to_string(),
-            output: if combined.trim().is_empty() {
-                format!("{} {} completed", spec.name, action.as_str())
-            } else {
-                combined.trim().to_string()
-            },
+            output: output_text,
             exit_code: output.exit_status,
             backup_path: None,
         })
@@ -353,28 +386,38 @@ exit $rc"#,
         service: WebService,
     ) -> AppResult<ServiceActionResult> {
         let spec = service.spec();
-        let test = maybe_sudo(profile, spec.test_command);
+        let preamble = elevation_preamble(profile);
         let script = format!(
-            r#"if command -v {binary} >/dev/null 2>&1; then
-  {test} 2>&1
+            r#"{preamble}
+if command -v {binary} >/dev/null 2>&1; then
+  run_elevated {test} 2>&1
   exit $?
 fi
 echo "{binary} is not installed" >&2
 exit 127"#,
+            preamble = preamble,
             binary = spec.binary,
-            test = test
+            test = spec.test_command
         );
 
         let output = pools
             .execute_service(&profile.id, &script, Duration::from_secs(30))
             .await?;
 
+        let combined = format!("{}{}", output.stdout, output.stderr);
+        let trimmed = combined.trim();
+        let output_text = if !output.success() {
+            describe_action_failure(trimmed, &profile.username, "test", spec.name)
+        } else if trimmed.is_empty() {
+            format!("{} configuration syntax ok", spec.name)
+        } else {
+            trimmed.to_string()
+        };
+
         Ok(ServiceActionResult {
             ok: output.success(),
             action: "test".to_string(),
-            output: format!("{}{}", output.stdout, output.stderr)
-                .trim()
-                .to_string(),
+            output: output_text,
             exit_code: output.exit_status,
             backup_path: None,
         })
@@ -883,6 +926,44 @@ fn describe_read_failure(detail: &str) -> String {
     }
 }
 
+fn describe_action_failure(
+    detail: &str,
+    username: &str,
+    action: &str,
+    service_name: &str,
+) -> String {
+    let trimmed = detail.trim();
+    if trimmed.contains("Interactive authentication required") {
+        format!(
+            "Error de permisos interactivos (PolicyKit): la acción '{action}' en el servicio '{service_name}' fue bloqueada porque la sesión SSH no es interactiva y el usuario '{username}' no posee privilegios de superusuario directos.\n\n\
+            Diagnóstico del sistema:\n{trimmed}\n\n\
+            Solución recomendada:\n\
+            1. En el servidor remoto, otorga permisos sudo sin contraseña para el usuario '{username}':\n\
+               echo \"{username} ALL=(ALL) NOPASSWD: /bin/systemctl, /usr/bin/systemctl, /sbin/service, /usr/sbin/service\" | sudo tee /etc/sudoers.d/2shell-services\n\
+            2. O bien inicia sesión como 'root' o activa la opción 'Use sudo -n' en la configuración del perfil si el usuario ya dispone de permisos sudo."
+        )
+    } else if trimmed.contains("password is required")
+        || trimmed.contains("no tty present and no askpass program specified")
+    {
+        format!(
+            "Error de sudo: la ejecución de '{action}' en '{service_name}' requiere contraseña interactiva para el usuario '{username}'.\n\n\
+            Salida del sistema:\n{trimmed}\n\n\
+            Solución:\n\
+            • Configura una regla NOPASSWD en sudoers para los comandos de servicio o verifica la contraseña configurada en el perfil."
+        )
+    } else if trimmed.contains("Permission denied") || trimmed.contains("Access denied") {
+        format!(
+            "Permiso denegado al ejecutar '{action}' en '{service_name}'. Se requieren privilegios de administrador (root/sudo).\n\nSalida del sistema:\n{trimmed}"
+        )
+    } else if trimmed.is_empty() {
+        format!(
+            "{service_name} {action} falló sin salida en la consola. Consulta los registros con journalctl -u {service_name}.service"
+        )
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn validate_config_path(service: WebService, path: &str) -> AppResult<()> {
     let spec = service.spec();
     if path.trim().is_empty() {
@@ -940,6 +1021,28 @@ mod tests {
             describe_read_failure("cat: /etc/nginx/a.conf: No such file or directory"),
             "cat: /etc/nginx/a.conf: No such file or directory"
         );
+    }
+
+    #[test]
+    fn action_failures_handle_interactive_auth_and_sudo() {
+        let failure = describe_action_failure(
+            "Failed to restart httpd.service: Interactive authentication required.",
+            "cardiorientecom",
+            "restart",
+            "httpd",
+        );
+        assert!(failure.contains("PolicyKit"));
+        assert!(failure.contains("NOPASSWD"));
+        assert!(failure.contains("cardiorientecom"));
+
+        let sudo_fail = describe_action_failure(
+            "sudo: a password is required",
+            "ubuntu",
+            "restart",
+            "nginx",
+        );
+        assert!(sudo_fail.contains("requiere contraseña interactiva"));
+        assert!(sudo_fail.contains("ubuntu"));
     }
 
     #[test]

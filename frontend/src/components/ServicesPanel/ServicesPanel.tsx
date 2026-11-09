@@ -652,7 +652,38 @@ export function ServicesPanel({ profileId }: ServicesPanelProps) {
                   {resultExpanded ? 'Hide output' : 'Show output'}
                 </span>
               </button>
-              {resultExpanded && <pre>{result.output}</pre>}
+              {resultExpanded && (
+                <div className="command-result__content">
+                  <pre>{result.output}</pre>
+                  {!result.ok &&
+                    (result.output.includes('Interactive authentication required') ||
+                      result.output.includes('PolicyKit') ||
+                      result.output.includes('NOPASSWD')) && (
+                      <div className="command-result__action-hint">
+                        <span>
+                          💡 <strong>Consejo de permisos:</strong> Para permitir el control de servicios sin contraseñas interactivas, ejecuta en la terminal del servidor:
+                        </span>
+                        <div className="command-result__copy-snippet">
+                          <code>
+                            {`echo "${profile?.username || 'usuario'} ALL=(ALL) NOPASSWD: /bin/systemctl, /usr/bin/systemctl, /sbin/service, /usr/sbin/service" | sudo tee /etc/sudoers.d/2shell-services`}
+                          </code>
+                          <button
+                            type="button"
+                            className="ghost-button ghost-button--xs"
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                `echo "${profile?.username || 'usuario'} ALL=(ALL) NOPASSWD: /bin/systemctl, /usr/bin/systemctl, /sbin/service, /usr/sbin/service" | sudo tee /etc/sudoers.d/2shell-services`,
+                              )
+                              pushToast('success', 'Regla sudoers copiada al portapapeles')
+                            }}
+                          >
+                            Copiar regla sudoers
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                </div>
+              )}
             </div>
           )}
 

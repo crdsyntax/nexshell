@@ -2236,6 +2236,48 @@ body.theme-dark .terminal-overlay__btn-secondary:hover:not(:disabled),
   white-space: pre-wrap;
 }
 
+.command-result__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.command-result__action-hint {
+  padding: 10px 14px;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.2));
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--fg);
+}
+
+.command-result__copy-snippet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-inset, rgba(0, 0, 0, 0.35));
+  border: 1px solid var(--border-soft);
+  padding: 6px 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.command-result__copy-snippet code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #38bdf8;
+  white-space: nowrap;
+}
+
+.ghost-button--xs {
+  padding: 3px 8px;
+  font-size: 10px;
+  height: auto;
+  white-space: nowrap;
+}
+
 .config-workspace {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
