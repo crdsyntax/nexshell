@@ -201,8 +201,6 @@ impl Storage {
             CREATE INDEX IF NOT EXISTS idx_logs_profile ON execution_logs (profile_id, id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_category ON execution_logs (category, id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_status ON execution_logs (status, id DESC);
-            CREATE INDEX IF NOT EXISTS idx_logs_record_hash ON execution_logs (record_hash);
-            CREATE INDEX IF NOT EXISTS idx_logs_prev_hash ON execution_logs (prev_hash);
 
             CREATE TABLE IF NOT EXISTS security_audits (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,6 +232,8 @@ impl Storage {
         let _ = conn.execute("ALTER TABLE execution_logs ADD COLUMN prev_hash TEXT NOT NULL DEFAULT ''", []);
         let _ = conn.execute("ALTER TABLE execution_logs ADD COLUMN record_hash TEXT NOT NULL DEFAULT ''", []);
         let _ = conn.execute("ALTER TABLE execution_logs ADD COLUMN signature TEXT NOT NULL DEFAULT ''", []);
+        let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_record_hash ON execution_logs (record_hash)", []);
+        let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_prev_hash ON execution_logs (prev_hash)", []);
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
     }
@@ -943,6 +943,61 @@ mod tests {
 
     fn test_storage(dir: &tempfile::TempDir) -> Storage {
         Storage::open(&dir.path().join("nexshell.db"), None).unwrap()
+    }
+
+    #[test]
+    fn migrates_legacy_execution_logs_table_without_hash_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.sqlite");
+
+        // Create legacy DB with execution_logs lacking hash columns
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE profiles (id TEXT PRIMARY KEY, config_json TEXT NOT NULL);
+                 CREATE TABLE execution_logs (
+                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                     timestamp     INTEGER NOT NULL,
+                     profile_id    TEXT,
+                     profile_name  TEXT,
+                     category      TEXT NOT NULL,
+                     action        TEXT NOT NULL,
+                     target        TEXT,
+                     command       TEXT,
+                     status        TEXT NOT NULL,
+                     exit_code     INTEGER,
+                     duration_ms   INTEGER,
+                     output        TEXT,
+                     error         TEXT,
+                     metadata_json TEXT
+                 );",
+            )
+            .unwrap();
+        }
+
+        // Opening with Storage::open must migrate columns and indexes smoothly
+        let storage = Storage::open(&path, None).unwrap();
+        let log = NewExecutionLog {
+            timestamp: 100,
+            profile_id: Some("p1".into()),
+            profile_name: Some("test".into()),
+            category: "service".into(),
+            action: "exec".into(),
+            target: None,
+            command: Some("ls".into()),
+            status: "success".into(),
+            exit_code: Some(0),
+            duration_ms: Some(5),
+            output: Some("ok".into()),
+            error: None,
+            metadata_json: None,
+        };
+        let id = storage.insert_log(&log).unwrap();
+        assert!(id > 0);
+
+        let report = storage.verify_log_chain().unwrap();
+        assert!(report.valid);
+        assert_eq!(report.verified_records, 1);
     }
 
     #[test]
