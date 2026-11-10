@@ -45,6 +45,8 @@ import type {
   ProcessInfo,
 } from '@/types'
 
+const EMPTY_AUDIT_LOG: ProcessAuditEntry[] = []
+
 interface MetricsPanelProps {
   profileId: string
 }
@@ -164,7 +166,8 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
 
   const profile = profiles.find((item) => item.id === profileId)
 
-  const processAuditLog = useAppStore((state) => state.processAuditLogs[profileId] ?? [])
+  const rawAuditLog = useAppStore((state) => state.processAuditLogs[profileId])
+  const processAuditLog = rawAuditLog ?? EMPTY_AUDIT_LOG
   const clearProcessAuditLog = useAppStore((state) => state.clearProcessAuditLog)
   const [processViewMode, setProcessViewMode] = useState<'live' | 'audit'>('live')
   const [auditMinCpu, setAuditMinCpu] = useState<number>(0)
