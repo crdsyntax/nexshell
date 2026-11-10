@@ -1,6 +1,6 @@
 use crate::error::AppResult;
 use crate::infrastructure::storage::Storage;
-use crate::models::{ExecutionLog, LogFilter, NewExecutionLog};
+use crate::models::{ExecutionLog, LogChainVerification, LogFilter, NewExecutionLog};
 use chrono::Utc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -143,6 +143,10 @@ impl AuditService {
 
     pub fn db_path(&self) -> String {
         self.storage.path().display().to_string()
+    }
+
+    pub fn verify_chain(&self) -> AppResult<LogChainVerification> {
+        self.storage.verify_log_chain()
     }
 }
 

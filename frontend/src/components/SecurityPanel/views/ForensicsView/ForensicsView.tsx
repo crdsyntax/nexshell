@@ -1,5 +1,6 @@
 import {
   AlertIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClockIcon,
@@ -102,6 +103,11 @@ export function ForensicsView({ profileId }: { profileId: string }) {
     setSection,
     unblockIp,
     uniqueIps,
+    chainVerification,
+    verifyingChain,
+    verifyChain,
+    exportingManifest,
+    exportManifest,
   } = useForensicsView(profileId)
 
   const [authSortField, setAuthSortField] = useState<AuthSortField>('timestamp')
@@ -230,6 +236,41 @@ export function ForensicsView({ profileId }: { profileId: string }) {
               <strong>{secrets.length}</strong> archivos expuestos
             </span>
           )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 'auto' }}>
+          {chainVerification && (
+            <span
+              className={`sec-status ${chainVerification.valid ? 'is-ok' : 'is-bad'}`}
+              title={
+                chainVerification.valid
+                  ? `Chain of custody verified: ${chainVerification.verifiedRecords} signed records. Head: ${chainVerification.latestHash.slice(0, 16)}…`
+                  : `Chain integrity violation at #${chainVerification.brokenAtId}: ${chainVerification.failureReason || 'hash mismatch'}`
+              }
+            >
+              {chainVerification.valid ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
+              {chainVerification.valid ? 'Chain: Valid' : 'Chain: Tampered'}
+            </span>
+          )}
+          <button
+            type="button"
+            className="ghost-button ghost-button--xs"
+            onClick={() => void verifyChain()}
+            disabled={verifyingChain}
+            title="Verify cryptographic hash chain and HMAC signatures across all execution logs"
+          >
+            <ShieldIcon size={12} className={verifyingChain ? 'spin' : ''} />
+            {verifyingChain ? 'Verifying…' : 'Verify Chain'}
+          </button>
+          <button
+            type="button"
+            className="ghost-button ghost-button--xs"
+            onClick={() => void exportManifest()}
+            disabled={exportingManifest}
+            title="Generate cryptographically signed forensic manifest and copy JSON to clipboard"
+          >
+            <KeyIcon size={12} />
+            {exportingManifest ? 'Signing…' : 'Sign Manifest'}
+          </button>
         </div>
       </div>
       {error && (

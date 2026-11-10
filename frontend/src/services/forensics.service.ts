@@ -2,9 +2,11 @@ import { ipc } from '@/lib/api'
 import type {
   ArtifactEntry,
   AuthAttempt,
+  LogChainVerification,
   SearchHit,
   SecretHit,
   SessionEntry,
+  SignedForensicManifest,
 } from '@/types'
 
 export const forensicsService = {
@@ -18,4 +20,8 @@ export const forensicsService = {
     ipc.invoke<SearchHit[]>('forensics_search', { profileId, path, query, regex }),
   secrets: (profileId: string, path: string) =>
     ipc.invoke<SecretHit[]>('forensics_secrets', { profileId, path }),
+  verifyChain: () =>
+    ipc.invoke<LogChainVerification>('forensics_verify_chain'),
+  exportSignedManifest: (profileId: string) =>
+    ipc.invoke<SignedForensicManifest>('forensics_export_signed_manifest', { profileId }),
 }

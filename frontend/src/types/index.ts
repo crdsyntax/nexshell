@@ -459,6 +459,31 @@ export interface SecretHit {
   preview: string
 }
 
+export interface LogChainVerification {
+  valid: boolean
+  totalRecords: number
+  verifiedRecords: number
+  brokenAtId?: number | null
+  firstHash: string
+  latestHash: string
+  failureReason?: string | null
+}
+
+export interface SignedForensicManifest {
+  manifestId: string
+  generatedAt: number
+  profileId: string
+  profileName: string
+  investigatorSession: string
+  sessionsCount: number
+  authAttemptsCount: number
+  artifactsCount: number
+  evidenceHashes: Record<string, string>
+  chainHeadHash: string
+  chainValid: boolean
+  signature: string
+}
+
 export interface FsEntry {
   name: string
   path: string

@@ -2,10 +2,13 @@ use crate::application::filesystem::human_size;
 use crate::application::pool::PoolManager;
 use crate::application::services::shell_quote;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::storage::{sign_hash, Storage};
 use crate::models::{
     ArtifactEntry, AuthAttempt, ConnectionProfile, SearchHit, SecretHit, SessionEntry,
+    SignedForensicManifest,
 };
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -204,6 +207,64 @@ exit 0
             }
         }
         Ok(hits)
+    }
+
+    pub async fn export_signed_manifest(
+        pools: &PoolManager,
+        profile: &ConnectionProfile,
+        storage: &Storage,
+    ) -> AppResult<SignedForensicManifest> {
+        let sessions = Self::sessions(pools, profile).await?;
+        let attempts = Self::auth_attempts(pools, profile, Some(200)).await?;
+        let artifacts = Self::artifacts(pools, profile, "/tmp").await.unwrap_or_default();
+        let chain_report = storage.verify_log_chain()?;
+
+        let sessions_json = serde_json::to_string(&sessions)?;
+        let attempts_json = serde_json::to_string(&attempts)?;
+        let artifacts_json = serde_json::to_string(&artifacts)?;
+
+        let hash_content = |data: &str| -> String {
+            let mut hasher = Sha256::new();
+            hasher.update(data.as_bytes());
+            hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect()
+        };
+
+        let mut evidence_hashes = std::collections::HashMap::new();
+        evidence_hashes.insert("sessions_sha256".to_string(), hash_content(&sessions_json));
+        evidence_hashes.insert("auth_attempts_sha256".to_string(), hash_content(&attempts_json));
+        evidence_hashes.insert("artifacts_sha256".to_string(), hash_content(&artifacts_json));
+        evidence_hashes.insert("chain_head_hash".to_string(), chain_report.latest_hash.clone());
+
+        let manifest_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        let investigator_session = format!("{}@{}", profile.username, profile.host);
+
+        let canonical_manifest = format!(
+            "{}:{}:{}:{}:{}:{}",
+            manifest_id,
+            now,
+            profile.id,
+            evidence_hashes["sessions_sha256"],
+            evidence_hashes["auth_attempts_sha256"],
+            chain_report.latest_hash
+        );
+
+        let signature = sign_hash(storage.signing_key(), &canonical_manifest);
+
+        Ok(SignedForensicManifest {
+            manifest_id,
+            generated_at: now,
+            profile_id: profile.id.clone(),
+            profile_name: profile.name.clone(),
+            investigator_session,
+            sessions_count: sessions.len(),
+            auth_attempts_count: attempts.len(),
+            artifacts_count: artifacts.len(),
+            evidence_hashes,
+            chain_head_hash: chain_report.latest_hash,
+            chain_valid: chain_report.valid,
+            signature,
+        })
     }
 }
 

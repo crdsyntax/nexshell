@@ -844,7 +844,7 @@ pub struct DbPasswordResult {
     pub test: Option<DbLoginTest>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionLog {
     pub id: i64,
@@ -861,6 +861,12 @@ pub struct ExecutionLog {
     pub output: Option<String>,
     pub error: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub prev_hash: String,
+    #[serde(default)]
+    pub record_hash: String,
+    #[serde(default)]
+    pub signature: String,
 }
 
 #[derive(Debug, Clone)]
@@ -878,6 +884,35 @@ pub struct NewExecutionLog {
     pub output: Option<String>,
     pub error: Option<String>,
     pub metadata_json: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogChainVerification {
+    pub valid: bool,
+    pub total_records: u64,
+    pub verified_records: u64,
+    pub broken_at_id: Option<i64>,
+    pub first_hash: String,
+    pub latest_hash: String,
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedForensicManifest {
+    pub manifest_id: String,
+    pub generated_at: i64,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub investigator_session: String,
+    pub sessions_count: usize,
+    pub auth_attempts_count: usize,
+    pub artifacts_count: usize,
+    pub evidence_hashes: std::collections::HashMap<String, String>,
+    pub chain_head_hash: String,
+    pub chain_valid: bool,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone)]

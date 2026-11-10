@@ -577,55 +577,91 @@ exit 0"#,
 
         let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
         let backup_path = format!("{path}.2shell-{timestamp}.bak");
+        let staged_path = format!("{path}.2shell-staged-{timestamp}");
         let encoded = base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,
             content.as_bytes(),
         );
 
-        let cp = maybe_sudo(profile, "cp");
-        let tee = maybe_sudo(profile, "tee");
-        let mkdir = maybe_sudo(profile, "mkdir");
-        let rm = maybe_sudo(profile, "rm");
-        let test = maybe_sudo(profile, spec.test_command);
+        let config_root = spec.config_root;
+        let test = spec.test_command;
 
-        let write_script = if is_existing {
+        // Path-jailed atomic transaction:
+        // Enforces canonical boundaries to eliminate reliance on generic sudo whitelist binaries (tee/cp).
+        let inner_script = if is_existing {
             format!(
-                r#"{cp} -p -- {path} {backup} || exit 1
-printf '%s' {encoded} | base64 -d | {tee} {path} >/dev/null || {{ {cp} -p -- {backup} {path}; exit 1; }}
-{test} 2>&1
-rc=$?
-if [ $rc -ne 0 ]; then
-  {cp} -p -- {backup} {path}
+                r#"set -e
+dest={path}
+backup={backup}
+staged={staged}
+config_root={config_root}
+
+real_dest=$(readlink -f "$dest" 2>/dev/null || realpath -m "$dest" 2>/dev/null)
+case "$real_dest" in
+  "$config_root"/*) ;;
+  *) echo "Security error: target '$dest' resolves outside root '$config_root'" >&2; exit 2 ;;
+esac
+
+# Stage content to temp file inside config directory
+printf '%s' {encoded} | base64 -d > "$staged" || exit 1
+chmod 644 "$staged" 2>/dev/null || true
+
+# Backup current file
+cat -- "$dest" > "$backup" 2>/dev/null || true
+
+# Atomically replace target and test syntax
+mv -f -- "$staged" "$dest" || exit 1
+if {test} 2>&1; then
+  exit 0
+else
+  rc=$?
+  cat -- "$backup" > "$dest" 2>/dev/null || true
   echo "--- configuration restored from backup ---"
-fi
-exit $rc"#,
-                cp = cp,
-                tee = tee,
+  exit $rc
+fi"#,
                 path = shell_quote(path),
                 backup = shell_quote(&backup_path),
+                staged = shell_quote(&staged_path),
+                config_root = shell_quote(config_root),
                 encoded = shell_quote(&encoded),
                 test = test
             )
         } else {
             format!(
-                r#"dir=$(dirname -- {path})
-{mkdir} -p -- "$dir" || exit 1
-printf '%s' {encoded} | base64 -d | {tee} {path} >/dev/null || exit 1
-{test} 2>&1
-rc=$?
-if [ $rc -ne 0 ]; then
-  {rm} -f -- {path}
+                r#"set -e
+dest={path}
+staged={staged}
+config_root={config_root}
+
+dir=$(dirname -- "$dest")
+real_dir=$(readlink -f "$dir" 2>/dev/null || realpath -m "$dir" 2>/dev/null)
+case "$real_dir" in
+  "$config_root"|"$config_root"/*) ;;
+  *) echo "Security error: destination '$dir' outside root '$config_root'" >&2; exit 2 ;;
+esac
+
+mkdir -p -- "$dir" || exit 1
+printf '%s' {encoded} | base64 -d > "$staged" || exit 1
+chmod 644 "$staged" 2>/dev/null || true
+
+mv -f -- "$staged" "$dest" || exit 1
+if {test} 2>&1; then
+  exit 0
+else
+  rc=$?
+  rm -f -- "$dest"
   echo "--- new configuration failed syntax test, file removed ---"
-fi
-exit $rc"#,
-                mkdir = mkdir,
-                tee = tee,
+  exit $rc
+fi"#,
                 path = shell_quote(path),
+                staged = shell_quote(&staged_path),
+                config_root = shell_quote(config_root),
                 encoded = shell_quote(&encoded),
-                test = test,
-                rm = rm
+                test = test
             )
         };
+
+        let write_script = as_root(profile, &inner_script);
 
         let output = pools
             .execute_service(&profile.id, &write_script, Duration::from_secs(45))
@@ -720,27 +756,39 @@ exit 0"#,
 
         let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
         let backup_path = format!("{path}.2shell-{timestamp}.delbak");
-        let cp = maybe_sudo(profile, "cp");
-        let rm = maybe_sudo(profile, "rm");
-        let test = maybe_sudo(profile, spec.test_command);
-        let script = format!(
-            r#"{cp} -p -- {path} {backup} || exit 1
-{rm} -f -- {path} || exit 1
-{test} 2>&1
-rc=$?
-if [ $rc -ne 0 ]; then
-  {cp} -p -- {backup} {path}
-  echo "--- deletion aborted: syntax test failed, configuration restored ---"
+        let config_root = spec.config_root;
+        let test = spec.test_command;
+
+        let inner_script = format!(
+            r#"set -e
+dest={path}
+backup={backup}
+config_root={config_root}
+
+real_dest=$(readlink -f "$dest" 2>/dev/null || realpath -m "$dest" 2>/dev/null)
+case "$real_dest" in
+  "$config_root"/*) ;;
+  *) echo "Security error: target '$dest' resolves outside root '$config_root'" >&2; exit 2 ;;
+esac
+
+cat -- "$dest" > "$backup" 2>/dev/null || true
+rm -f -- "$dest" || exit 1
+if {test} 2>&1; then
+  rm -f -- "$backup"
+  exit 0
 else
-  {rm} -f -- {backup}
-fi
-exit $rc"#,
-            cp = cp,
-            rm = rm,
+  rc=$?
+  cat -- "$backup" > "$dest" 2>/dev/null || true
+  echo "--- deletion aborted: syntax test failed, configuration restored ---"
+  exit $rc
+fi"#,
             path = shell_quote(path),
             backup = shell_quote(&backup_path),
+            config_root = shell_quote(config_root),
             test = test
         );
+
+        let script = as_root(profile, &inner_script);
 
         let output = pools
             .execute_service(&profile.id, &script, Duration::from_secs(30))
@@ -781,60 +829,78 @@ exit $rc"#,
             return Err(AppError::Validation("invalid site name".into()));
         }
 
-        let ln = maybe_sudo(profile, "ln");
-        let rm = maybe_sudo(profile, "rm");
-        let mkdir = maybe_sudo(profile, "mkdir");
-        let test = maybe_sudo(profile, spec.test_command);
-
         let root = spec.config_root.trim_end_matches('/');
         let available = format!("{root}/sites-available/{site_name}");
         let enabled = format!("{root}/sites-enabled/{site_name}");
+        let test = spec.test_command;
 
-        let script = if enable {
+        let inner_script = if enable {
             format!(
-                r#"{mkdir} -p {root}/sites-enabled || exit 1
-if [ ! -f {available} ] && [ ! -L {available} ]; then
+                r#"set -e
+root={root}
+available={available}
+enabled={enabled}
+
+real_available=$(readlink -f "$available" 2>/dev/null || realpath -m "$available" 2>/dev/null)
+case "$real_available" in
+  "$root"/sites-available/*) ;;
+  *) echo "Security error: available site path outside authorized sites-available directory" >&2; exit 2 ;;
+esac
+
+mkdir -p "$root/sites-enabled" || exit 1
+if [ ! -f "$available" ] && [ ! -L "$available" ]; then
   echo "site file not found in sites-available"
   exit 1
 fi
-{ln} -sf {available} {enabled} || exit 1
-{test} 2>&1
-rc=$?
-if [ $rc -ne 0 ]; then
-  {rm} -f {enabled}
+ln -sf "$available" "$enabled" || exit 1
+if {test} 2>&1; then
+  exit 0
+else
+  rc=$?
+  rm -f "$enabled"
   echo "--- site enablement failed syntax test, symlink removed ---"
-fi
-exit $rc"#,
-                mkdir = mkdir,
+  exit $rc
+fi"#,
+                root = shell_quote(root),
                 available = shell_quote(&available),
                 enabled = shell_quote(&enabled),
-                ln = ln,
-                test = test,
-                rm = rm,
-                root = shell_quote(root),
+                test = test
             )
         } else {
             format!(
-                r#"if [ -L {enabled} ] || [ -f {enabled} ]; then
-  {rm} -f {enabled} || exit 1
-  {test} 2>&1
-  rc=$?
-  if [ $rc -ne 0 ]; then
-    {ln} -sf {available} {enabled}
+                r#"set -e
+root={root}
+available={available}
+enabled={enabled}
+
+real_enabled=$(readlink -f "$enabled" 2>/dev/null || realpath -m "$enabled" 2>/dev/null)
+case "$real_enabled" in
+  "$root"/sites-enabled/*) ;;
+  *) echo "Security error: enabled site path outside authorized sites-enabled directory" >&2; exit 2 ;;
+esac
+
+if [ -L "$enabled" ] || [ -f "$enabled" ]; then
+  rm -f "$enabled" || exit 1
+  if {test} 2>&1; then
+    exit 0
+  else
+    rc=$?
+    ln -sf "$available" "$enabled" 2>/dev/null || true
     echo "--- disabling site broke configuration, symlink restored ---"
+    exit $rc
   fi
-  exit $rc
 else
   echo "site is not enabled"
   exit 0
 fi"#,
-                rm = rm,
+                root = shell_quote(root),
                 enabled = shell_quote(&enabled),
-                test = test,
-                ln = ln,
                 available = shell_quote(&available),
+                test = test
             )
         };
+
+        let script = as_root(profile, &inner_script);
 
         let output = pools
             .execute_service(&profile.id, &script, Duration::from_secs(30))

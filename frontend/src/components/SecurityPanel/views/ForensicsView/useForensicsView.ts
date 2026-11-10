@@ -2,7 +2,15 @@ import { fail2banService } from '@/services/fail2ban.service'
 import { forensicsService } from '@/services/forensics.service'
 import { incidentService } from '@/services/incident.service'
 import { useAppStore } from '@/store/useAppStore'
-import type { ArtifactEntry, AuthAttempt, SearchHit, SecretHit, SessionEntry } from '@/types'
+import type {
+  ArtifactEntry,
+  AuthAttempt,
+  LogChainVerification,
+  SearchHit,
+  SecretHit,
+  SessionEntry,
+  SignedForensicManifest,
+} from '@/types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type ForensicsSection = 'sessions' | 'auth' | 'artifacts' | 'search' | 'secrets'
@@ -29,6 +37,42 @@ export function useForensicsView(profileId: string) {
   const [error, setError] = useState<string | null>(null)
   const [blockedIps, setBlockedIps] = useState<string[]>([])
   const [blocking, setBlocking] = useState<string | null>(null)
+  const [chainVerification, setChainVerification] = useState<LogChainVerification | null>(null)
+  const [verifyingChain, setVerifyingChain] = useState(false)
+  const [manifest, setManifest] = useState<SignedForensicManifest | null>(null)
+  const [exportingManifest, setExportingManifest] = useState(false)
+
+  const verifyChain = useCallback(async () => {
+    setVerifyingChain(true)
+    try {
+      const res = await forensicsService.verifyChain()
+      setChainVerification(res)
+      if (res.valid) {
+        pushToast('success', `Chain of custody verified: ${res.verifiedRecords} signed records`)
+      } else {
+        pushToast('error', `Chain verification failed at #${res.brokenAtId}: ${res.failureReason || 'Integrity violation'}`)
+      }
+    } catch (err) {
+      pushToast('error', `Failed to verify log chain: ${String(err)}`)
+    } finally {
+      setVerifyingChain(false)
+    }
+  }, [pushToast])
+
+  const exportManifest = useCallback(async () => {
+    setExportingManifest(true)
+    try {
+      const res = await forensicsService.exportSignedManifest(profileId)
+      setManifest(res)
+      const json = JSON.stringify(res, null, 2)
+      await navigator.clipboard.writeText(json)
+      pushToast('success', 'Signed forensic manifest generated and copied to clipboard')
+    } catch (err) {
+      pushToast('error', `Failed to export signed manifest: ${String(err)}`)
+    } finally {
+      setExportingManifest(false)
+    }
+  }, [profileId, pushToast])
 
   const syncBlockedIps = useCallback(async () => {
     try {
@@ -171,6 +215,12 @@ export function useForensicsView(profileId: string) {
     setSection,
     syncBlockedIps,
     unblockIp,
+    chainVerification,
+    verifyingChain,
+    verifyChain,
+    manifest,
+    exportingManifest,
+    exportManifest,
     uniqueIps,
   }
 }

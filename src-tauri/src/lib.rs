@@ -73,6 +73,8 @@ pub fn run() {
             presentation::tauri::commands::forensics_search,
             presentation::tauri::commands::forensics_secrets,
             presentation::tauri::commands::forensics_auth,
+            presentation::tauri::commands::forensics_verify_chain,
+            presentation::tauri::commands::forensics_export_signed_manifest,
             presentation::tauri::commands::alerts_start,
             presentation::tauri::commands::alerts_stop,
             presentation::tauri::commands::alerts_status,

@@ -433,6 +433,10 @@ impl SecurityManager {
                 &nopasswd.join("\n"),
                 "Remove unknown users and restrict each NOPASSWD rule to the exact commands needed.",
             ));
+
+            if let Some(gtfo_finding) = check_gtfobins_sudoers(&nopasswd) {
+                findings.push(gtfo_finding);
+            }
         }
 
         let world_writable: Vec<String> = section(&sections, "WORLD")
@@ -880,6 +884,37 @@ fn security_update_lines(sections: &HashMap<String, Vec<String>>) -> Vec<String>
         .collect()
 }
 
+fn check_gtfobins_sudoers(lines: &[String]) -> Option<SecurityFinding> {
+    let dangerous_gtfo: Vec<&str> = lines
+        .iter()
+        .filter(|line| {
+            let upper = line.to_uppercase();
+            if let Some(cmd_part) = upper.split("NOPASSWD:").nth(1) {
+                cmd_part.split(|c: char| c == ',' || c.is_whitespace()).any(|token| {
+                    let name = token.trim().rsplit('/').next().unwrap_or("");
+                    matches!(name, "TEE" | "CP" | "MV" | "DD" | "TAR" | "CHMOD" | "CHOWN")
+                })
+            } else {
+                false
+            }
+        })
+        .map(|s| s.as_str())
+        .collect();
+    if !dangerous_gtfo.is_empty() {
+        Some(finding(
+            "sudo-gtfobins-file-write",
+            "Dangerous sudoers whitelist allows arbitrary root file write (tee/cp)",
+            "critical",
+            "Privilege Escalation",
+            "Sudoers rule whitelists generic file-manipulation utilities (tee, cp, mv, dd, chmod, chown) with NOPASSWD. These binaries lack path restrictions and allow unprivileged users to overwrite arbitrary root files (e.g., /etc/shadow, /etc/sudoers) to achieve full root escalation.",
+            &dangerous_gtfo.join("\n"),
+            "Remove generic file-writing binaries (tee, cp) from sudoers NOPASSWD rules. Replace them with dedicated path-jailed scripts or restrict execution by removing NOPASSWD.",
+        ))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -990,5 +1025,22 @@ mod tests {
             ],
         );
         assert_eq!(security_update_lines(&sections).len(), 1);
+    }
+
+    #[test]
+    fn detects_dangerous_gtfobins_sudo_whitelist() {
+        let lines = vec![
+            "deploy ALL=(ALL) NOPASSWD: /usr/bin/tee, /bin/cp".to_string(),
+            "admin ALL=(ALL) NOPASSWD: /usr/bin/systemctl".to_string(),
+        ];
+        let finding = check_gtfobins_sudoers(&lines);
+        assert!(finding.is_some());
+        let item = finding.unwrap();
+        assert_eq!(item.id, "sudo-gtfobins-file-write");
+        assert_eq!(item.severity, "critical");
+        assert!(item.evidence.contains("/usr/bin/tee"));
+
+        let safe_lines = vec!["admin ALL=(ALL) NOPASSWD: /usr/bin/systemctl".to_string()];
+        assert!(check_gtfobins_sudoers(&safe_lines).is_none());
     }
 }

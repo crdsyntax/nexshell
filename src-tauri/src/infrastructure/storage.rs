@@ -1,12 +1,97 @@
 use crate::error::{AppError, AppResult};
-use crate::models::{ConnectionProfile, ExecutionLog, LogFilter, NewExecutionLog};
+use crate::models::{
+    ConnectionProfile, ExecutionLog, LogChainVerification, LogFilter, NewExecutionLog,
+};
 use chrono::Utc;
+use hmac::{Hmac, Mac};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
+
+type HmacSha256 = Hmac<Sha256>;
+
+pub const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+pub fn compute_record_hash(
+    prev_hash: &str,
+    timestamp: i64,
+    profile_id: Option<&str>,
+    category: &str,
+    action: &str,
+    target: Option<&str>,
+    command: Option<&str>,
+    status: &str,
+    exit_code: Option<i32>,
+    duration_ms: Option<u64>,
+    output: Option<&str>,
+    error: Option<&str>,
+    metadata_json: Option<&str>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(prev_hash.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(timestamp.to_string().as_bytes());
+    hasher.update(b"\n");
+    hasher.update(profile_id.unwrap_or("").as_bytes());
+    hasher.update(b"\n");
+    hasher.update(category.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(action.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(target.unwrap_or("").as_bytes());
+    hasher.update(b"\n");
+    hasher.update(command.unwrap_or("").as_bytes());
+    hasher.update(b"\n");
+    hasher.update(status.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(exit_code.map(|v| v.to_string()).unwrap_or_default().as_bytes());
+    hasher.update(b"\n");
+    hasher.update(duration_ms.map(|v| v.to_string()).unwrap_or_default().as_bytes());
+    hasher.update(b"\n");
+    hasher.update(output.unwrap_or("").as_bytes());
+    hasher.update(b"\n");
+    hasher.update(error.unwrap_or("").as_bytes());
+    hasher.update(b"\n");
+    hasher.update(metadata_json.unwrap_or("").as_bytes());
+
+    let result = hasher.finalize();
+    result.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+pub fn sign_hash(key: &[u8; 32], hash_str: &str) -> String {
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC supports 32-byte key");
+    mac.update(hash_str.as_bytes());
+    let result = mac.finalize().into_bytes();
+    result.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn load_or_generate_signing_key(db_path: &Path) -> [u8; 32] {
+    let key_path = if let Some(parent) = db_path.parent() {
+        parent.join(".forensic_signing_key")
+    } else {
+        PathBuf::from(".forensic_signing_key")
+    };
+
+    if let Ok(bytes) = std::fs::read(&key_path) {
+        if bytes.len() == 32 {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            return key;
+        }
+    }
+
+    let mut key = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut key);
+    if let Err(e) = std::fs::write(&key_path, key) {
+        tracing::warn!("Failed to persist forensic signing key to {}: {}", key_path.display(), e);
+    }
+    restrict_database_permissions(&key_path);
+    key
+}
 
 const SCHEMA_VERSION: i64 = 1;
 const DEFAULT_LOG_RETENTION: u32 = 10_000;
@@ -30,6 +115,7 @@ struct LegacyStoredProfile {
 pub struct Storage {
     path: PathBuf,
     conn: Mutex<Connection>,
+    signing_key: [u8; 32],
 }
 
 impl Storage {
@@ -37,6 +123,8 @@ impl Storage {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+
+        let signing_key = load_or_generate_signing_key(path);
 
         let conn = Connection::open(path)?;
         conn.busy_timeout(Duration::from_secs(5))?;
@@ -49,6 +137,7 @@ impl Storage {
         let storage = Self {
             path: path.to_path_buf(),
             conn: Mutex::new(conn),
+            signing_key,
         };
         storage.init_schema()?;
         restrict_database_permissions(path);
@@ -102,13 +191,18 @@ impl Storage {
                 duration_ms   INTEGER,
                 output        TEXT,
                 error         TEXT,
-                metadata_json TEXT
+                metadata_json TEXT,
+                prev_hash     TEXT NOT NULL DEFAULT '',
+                record_hash   TEXT NOT NULL DEFAULT '',
+                signature     TEXT NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS idx_logs_id ON execution_logs (id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_profile ON execution_logs (profile_id, id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_category ON execution_logs (category, id DESC);
             CREATE INDEX IF NOT EXISTS idx_logs_status ON execution_logs (status, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_logs_record_hash ON execution_logs (record_hash);
+            CREATE INDEX IF NOT EXISTS idx_logs_prev_hash ON execution_logs (prev_hash);
 
             CREATE TABLE IF NOT EXISTS security_audits (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,6 +231,9 @@ impl Storage {
             );
             CREATE INDEX IF NOT EXISTS idx_cron_backups_profile ON cron_backups (profile_id, id DESC);",
         )?;
+        let _ = conn.execute("ALTER TABLE execution_logs ADD COLUMN prev_hash TEXT NOT NULL DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE execution_logs ADD COLUMN record_hash TEXT NOT NULL DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE execution_logs ADD COLUMN signature TEXT NOT NULL DEFAULT ''", []);
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
     }
@@ -347,13 +444,45 @@ impl Storage {
         Ok(())
     }
 
+    pub fn signing_key(&self) -> &[u8; 32] {
+        &self.signing_key
+    }
+
     pub fn insert_log(&self, log: &NewExecutionLog) -> AppResult<i64> {
         let conn = self.lock()?;
+
+        let prev_hash: String = conn
+            .query_row(
+                "SELECT record_hash FROM execution_logs WHERE record_hash != '' ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| GENESIS_HASH.to_string());
+
+        let record_hash = compute_record_hash(
+            &prev_hash,
+            log.timestamp,
+            log.profile_id.as_deref(),
+            &log.category,
+            &log.action,
+            log.target.as_deref(),
+            log.command.as_deref(),
+            &log.status,
+            log.exit_code,
+            log.duration_ms,
+            log.output.as_deref(),
+            log.error.as_deref(),
+            log.metadata_json.as_deref(),
+        );
+
+        let signature = sign_hash(&self.signing_key, &record_hash);
+
         conn.execute(
             "INSERT INTO execution_logs
                 (timestamp, profile_id, profile_name, category, action, target, command,
-                 status, exit_code, duration_ms, output, error, metadata_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 status, exit_code, duration_ms, output, error, metadata_json,
+                 prev_hash, record_hash, signature)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 log.timestamp,
                 log.profile_id,
@@ -367,7 +496,10 @@ impl Storage {
                 log.duration_ms.map(|value| value as i64),
                 log.output,
                 log.error,
-                log.metadata_json
+                log.metadata_json,
+                prev_hash,
+                record_hash,
+                signature
             ],
         )?;
         let id = conn.last_insert_rowid();
@@ -389,7 +521,8 @@ impl Storage {
         let conn = self.lock()?;
         let mut statement = conn.prepare(
             "SELECT id, timestamp, profile_id, profile_name, category, action, target,
-                    command, status, exit_code, duration_ms, output, error, metadata_json
+                    command, status, exit_code, duration_ms, output, error, metadata_json,
+                    prev_hash, record_hash, signature
              FROM execution_logs
              WHERE (?1 IS NULL OR profile_id = ?1)
                AND (?2 IS NULL OR category = ?2)
@@ -425,6 +558,9 @@ impl Storage {
                     output: row.get(11)?,
                     error: row.get(12)?,
                     metadata: metadata_json.and_then(|raw| serde_json::from_str(&raw).ok()),
+                    prev_hash: row.get::<_, Option<String>>(14)?.unwrap_or_default(),
+                    record_hash: row.get::<_, Option<String>>(15)?.unwrap_or_default(),
+                    signature: row.get::<_, Option<String>>(16)?.unwrap_or_default(),
                 })
             },
         )?;
@@ -434,6 +570,123 @@ impl Storage {
             logs.push(row?);
         }
         Ok(logs)
+    }
+
+    pub fn verify_log_chain(&self) -> AppResult<LogChainVerification> {
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, timestamp, profile_id, category, action, target, command,
+                    status, exit_code, duration_ms, output, error, metadata_json,
+                    prev_hash, record_hash, signature
+             FROM execution_logs
+             WHERE record_hash != ''
+             ORDER BY id ASC",
+        )?;
+
+        let mut expected_prev = GENESIS_HASH.to_string();
+        let mut first_hash = String::new();
+        let mut latest_hash = String::new();
+        let mut verified_count: u64 = 0;
+
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: i64 = row.get(0)?;
+            let timestamp: i64 = row.get(1)?;
+            let profile_id: Option<String> = row.get(2)?;
+            let category: String = row.get(3)?;
+            let action: String = row.get(4)?;
+            let target: Option<String> = row.get(5)?;
+            let command: Option<String> = row.get(6)?;
+            let status: String = row.get(7)?;
+            let exit_code: Option<i32> = row.get(8)?;
+            let duration_ms: Option<u64> = row.get::<_, Option<i64>>(9)?.map(|v| v as u64);
+            let output: Option<String> = row.get(10)?;
+            let error: Option<String> = row.get(11)?;
+            let metadata_json: Option<String> = row.get(12)?;
+            let prev_hash: String = row.get(13)?;
+            let record_hash: String = row.get(14)?;
+            let signature: String = row.get(15)?;
+
+            if verified_count == 0 {
+                first_hash = record_hash.clone();
+            }
+
+            // 1. Verify hash chain continuity
+            if prev_hash != expected_prev {
+                return Ok(LogChainVerification {
+                    valid: false,
+                    total_records: verified_count + 1,
+                    verified_records: verified_count,
+                    broken_at_id: Some(id),
+                    first_hash,
+                    latest_hash: record_hash,
+                    failure_reason: Some(format!(
+                        "Chain continuity broken at record #{id}: prev_hash does not match preceding record_hash"
+                    )),
+                });
+            }
+
+            // 2. Verify record payload digest integrity
+            let computed_hash = compute_record_hash(
+                &prev_hash,
+                timestamp,
+                profile_id.as_deref(),
+                &category,
+                &action,
+                target.as_deref(),
+                command.as_deref(),
+                &status,
+                exit_code,
+                duration_ms,
+                output.as_deref(),
+                error.as_deref(),
+                metadata_json.as_deref(),
+            );
+
+            if record_hash != computed_hash {
+                return Ok(LogChainVerification {
+                    valid: false,
+                    total_records: verified_count + 1,
+                    verified_records: verified_count,
+                    broken_at_id: Some(id),
+                    first_hash,
+                    latest_hash: record_hash,
+                    failure_reason: Some(format!(
+                        "Payload integrity violation at record #{id}: recorded digest differs from recomputed payload hash"
+                    )),
+                });
+            }
+
+            // 3. Verify cryptographic digital signature (HMAC-SHA256)
+            let expected_sig = sign_hash(&self.signing_key, &record_hash);
+            if signature != expected_sig {
+                return Ok(LogChainVerification {
+                    valid: false,
+                    total_records: verified_count + 1,
+                    verified_records: verified_count,
+                    broken_at_id: Some(id),
+                    first_hash,
+                    latest_hash: record_hash,
+                    failure_reason: Some(format!(
+                        "Cryptographic signature mismatch at record #{id}: signature was not generated by local authority"
+                    )),
+                });
+            }
+
+            expected_prev = record_hash.clone();
+            latest_hash = record_hash;
+            verified_count += 1;
+        }
+
+        Ok(LogChainVerification {
+            valid: true,
+            total_records: verified_count,
+            verified_records: verified_count,
+            broken_at_id: None,
+            first_hash,
+            latest_hash,
+            failure_reason: None,
+        })
     }
 
     pub fn insert_cron_backup(
@@ -871,5 +1124,87 @@ mod tests {
         assert_eq!(storage.clear_logs(Some("p2")).unwrap(), 1);
         assert_eq!(storage.clear_logs(None).unwrap(), 1);
         assert!(storage.list_logs(&LogFilter::default()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn verifies_forensic_chain_of_custody_and_detects_tampering() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = test_storage(&dir);
+
+        let log1 = NewExecutionLog {
+            timestamp: 1000,
+            profile_id: Some("p1".into()),
+            profile_name: Some("bastion".into()),
+            category: "audit".into(),
+            action: "exec".into(),
+            target: Some("/etc/shadow".into()),
+            command: Some("stat /etc/shadow".into()),
+            status: "success".into(),
+            exit_code: Some(0),
+            duration_ms: Some(15),
+            output: Some("000 root root".into()),
+            error: None,
+            metadata_json: None,
+        };
+        let log2 = NewExecutionLog {
+            timestamp: 1005,
+            profile_id: Some("p1".into()),
+            profile_name: Some("bastion".into()),
+            category: "service".into(),
+            action: "restart".into(),
+            target: Some("sshd".into()),
+            command: Some("systemctl restart sshd".into()),
+            status: "success".into(),
+            exit_code: Some(0),
+            duration_ms: Some(210),
+            output: Some("active".into()),
+            error: None,
+            metadata_json: None,
+        };
+
+        let id1 = storage.insert_log(&log1).unwrap();
+        let id2 = storage.insert_log(&log2).unwrap();
+
+        let logs = storage.list_logs(&LogFilter::default()).unwrap();
+        assert_eq!(logs.len(), 2);
+        let row2 = logs.iter().find(|l| l.id == id2).unwrap();
+        let row1 = logs.iter().find(|l| l.id == id1).unwrap();
+
+        assert_eq!(row1.prev_hash, GENESIS_HASH);
+        assert!(!row1.record_hash.is_empty());
+        assert!(!row1.signature.is_empty());
+
+        assert_eq!(row2.prev_hash, row1.record_hash);
+        assert!(!row2.record_hash.is_empty());
+        assert!(!row2.signature.is_empty());
+
+        // Chain is valid
+        let report = storage.verify_log_chain().unwrap();
+        assert!(report.valid);
+        assert_eq!(report.total_records, 2);
+        assert_eq!(report.verified_records, 2);
+        assert_eq!(report.broken_at_id, None);
+        assert_eq!(report.first_hash, row1.record_hash);
+        assert_eq!(report.latest_hash, row2.record_hash);
+
+        // Tamper test: modify payload directly via raw SQL
+        {
+            let conn = storage.lock().unwrap();
+            conn.execute(
+                "UPDATE execution_logs SET command = 'stat /etc/passwd' WHERE id = ?1",
+                params![id1],
+            )
+            .unwrap();
+        }
+
+        // Verification must catch the tampering immediately
+        let tampered_report = storage.verify_log_chain().unwrap();
+        assert!(!tampered_report.valid);
+        assert_eq!(tampered_report.broken_at_id, Some(id1));
+        assert!(tampered_report
+            .failure_reason
+            .as_ref()
+            .unwrap()
+            .contains("Payload integrity violation"));
     }
 }

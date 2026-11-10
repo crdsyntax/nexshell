@@ -27,11 +27,12 @@ use crate::models::{
     ConnectionProfile, CronBackupSummary, CronDeleteResult, CronReport, DbInfo, DbLoginTest,
     DbPasswordResult, DbUser, DirListing, ExecOutput, ExecutionLog, Fail2banActionResult,
     Fail2banReport, FileDeleteResult, FileProperties, FirewallActionResult, FirewallReport,
-    IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogFilter, NetworkReport, NodeProcess,
-    Pm2Logs, Pm2Report, PoolStats, ProcessDetails, ProcessKillResult, ProcessLocation, ProfileView,
-    SearchHit, SecretHit, SecurityAuditSummary, SecurityFixResult, SecurityReport, ServerInfo,
-    ServiceActionResult, ServiceStatus, SessionEntry, SshActionResult, SshConfig, SshKey,
-    SudoersReport, TerminalInfo, TestResult, WebServiceInfo,
+    IncidentActionResult, IncidentScan, KeyProbe, LargeFile, LogChainVerification, LogFilter,
+    NetworkReport, NodeProcess, Pm2Logs, Pm2Report, PoolStats, ProcessDetails, ProcessKillResult,
+    ProcessLocation, ProfileView, SearchHit, SecretHit, SecurityAuditSummary, SecurityFixResult,
+    SecurityReport, ServerInfo, ServiceActionResult, ServiceStatus, SessionEntry,
+    SignedForensicManifest, SshActionResult, SshConfig, SshKey, SudoersReport, TerminalInfo,
+    TestResult, WebServiceInfo,
 };
 use crate::state::AppState;
 use std::time::{Duration, Instant};
@@ -1383,6 +1384,20 @@ pub async fn forensics_auth(
 ) -> AppResult<Vec<AuthAttempt>> {
     let profile = state.profiles.get(&profile_id)?;
     ForensicsManager::auth_attempts(&state.pools, &profile, limit).await
+}
+
+#[tauri::command]
+pub fn forensics_verify_chain(state: State<'_, AppState>) -> AppResult<LogChainVerification> {
+    state.audit.verify_chain()
+}
+
+#[tauri::command]
+pub async fn forensics_export_signed_manifest(
+    profile_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<SignedForensicManifest> {
+    let profile = state.profiles.get(&profile_id)?;
+    ForensicsManager::export_signed_manifest(&state.pools, &profile, &state.storage).await
 }
 
 #[tauri::command]
