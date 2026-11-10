@@ -20,6 +20,7 @@ import {
   PlugIcon,
   RefreshIcon,
   ServerIcon,
+  SettingsIcon,
   ShieldIcon,
 } from '@/components/Icons'
 import { Logo } from '@/components/Logo'
@@ -162,6 +163,14 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
             </button>
           </>
         )}
+        <button
+          className="icon-button icon-button--bordered"
+          onClick={() => useAppStore.getState().openSettingsModal()}
+          title="Settings & Appearance"
+          aria-label="Settings & Appearance"
+        >
+          <SettingsIcon size={14} />
+        </button>
       </nav>
     </header>
   )

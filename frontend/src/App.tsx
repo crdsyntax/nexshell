@@ -15,9 +15,11 @@ import { ConnectionModal } from '@/components/ConnectionModal'
 import { ShareConnectionModal } from '@/components/Sharing/ShareConnectionModal'
 import { ImportShareModal } from '@/components/Sharing/ImportShareModal'
 import { UpdateModal } from '@/components/update/UpdateModal'
+import { SettingsModal } from '@/components/SettingsModal'
 import { EmptyState } from '@/components/EmptyState'
 import { Toasts } from '@/components/Toasts'
 import { useAppStore } from '@/store/useAppStore'
+import { useThemeEffect } from '@/lib/useThemeEffect'
 import { refreshProfiles } from '@/lib/actions'
 import { profileService } from '@/services/profile.service'
 import { fetchPublicIp } from '@/lib/netinfo'
@@ -65,7 +67,11 @@ export default function App() {
   const closeShareModal = useAppStore((state) => state.closeShareModal)
   const importShareOpen = useAppStore((state) => state.importShareOpen)
   const closeImportModal = useAppStore((state) => state.closeImportModal)
+  const settingsOpen = useAppStore((state) => state.settingsOpen)
+  const closeSettingsModal = useAppStore((state) => state.closeSettingsModal)
   const [modalOpen, setModalOpen] = useState(false)
+
+  useThemeEffect()
   const [localIp, setLocalIp] = useState<string | null>(null)
   const [publicIp, setPublicIp] = useState<string | null>(null)
   const [editing, setEditing] = useState<Profile | null>(null)
@@ -298,6 +304,10 @@ export default function App() {
         open={importShareOpen}
         onClose={closeImportModal}
         onEditProfile={openEdit}
+      />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={closeSettingsModal}
       />
       <UpdateModal />
       <Toasts />

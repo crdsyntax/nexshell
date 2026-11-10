@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "2Shell",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.nexshell.app",
   "build": {
     "frontendDist": "../frontend/dist",

@@ -7,36 +7,13 @@ import { terminalService } from '@/services/terminal.service'
 import { fsService } from '@/services/fs.service'
 import { AlertIcon, XIcon } from '@/components/Icons'
 import { useResizable } from '@/lib/useResizable'
+import { useAppStore } from '@/store/useAppStore'
+import { getTerminalTheme } from '@/lib/themes'
 
 interface EditorModalProps {
   profileId: string
   path: string
   onClose: () => void
-}
-
-const THEME = {
-  background: '#ffffff',
-  foreground: '#111111',
-  cursor: '#1570ef',
-  cursorAccent: '#ffffff',
-  selectionBackground: '#e0f2fe',
-  selectionForeground: '#111111',
-  black: '#111111',
-  red: '#d92d20',
-  green: '#16b364',
-  yellow: '#d97706',
-  blue: '#1570ef',
-  magenta: '#7a5af8',
-  cyan: '#0891b2',
-  white: '#98a2b3',
-  brightBlack: '#667085',
-  brightRed: '#ef4444',
-  brightGreen: '#12b76a',
-  brightYellow: '#f59e0b',
-  brightBlue: '#2e90fa',
-  brightMagenta: '#9e77ed',
-  brightCyan: '#06aed4',
-  brightWhite: '#111111',
 }
 
 function shellQuote(value: string): string {
@@ -49,6 +26,7 @@ function parentOf(path: string): string {
 }
 
 export function EditorModal({ profileId, path, onClose }: EditorModalProps) {
+  const theme = useAppStore((state) => state.theme)
   const containerRef = useRef<HTMLDivElement>(null)
   const sessionRef = useRef<string | undefined>(undefined)
   const termRef = useRef<Terminal | null>(null)
@@ -72,7 +50,7 @@ export function EditorModal({ profileId, path, onClose }: EditorModalProps) {
       lineHeight: 1.25,
       cursorBlink: true,
       scrollback: 4000,
-      theme: THEME,
+      theme: getTerminalTheme(theme),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)

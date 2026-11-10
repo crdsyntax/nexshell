@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { AccentPalette, ThemeType } from '@/lib/themes'
 import type {
   EphemeralDatabase,
   MetricsHistory,
@@ -43,6 +44,12 @@ interface AppStore {
   pendingDbAuth: Record<string, EphemeralDatabase>
   shareTarget: ShareTarget | null
   importShareOpen: boolean
+  settingsOpen: boolean
+  theme: ThemeType
+  accentPalette: AccentPalette
+  uiFontFamily: string
+  uiFontSize: number
+  borderRadius: number
 
   setProfiles: (profiles: Profile[]) => void
   upsertProfile: (profile: Profile) => void
@@ -79,6 +86,13 @@ interface AppStore {
   closeShareModal: () => void
   openImportModal: () => void
   closeImportModal: () => void
+  openSettingsModal: () => void
+  closeSettingsModal: () => void
+  setTheme: (theme: ThemeType) => void
+  setAccentPalette: (palette: AccentPalette) => void
+  setUiFontFamily: (family: string) => void
+  setUiFontSize: (size: number) => void
+  setBorderRadius: (radius: number) => void
 }
 
 const EMPTY_HISTORY: MetricsHistory = { cpu: [], mem: [], rx: [], tx: [] }
@@ -108,6 +122,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   pendingDbAuth: {},
   shareTarget: null,
   importShareOpen: false,
+  settingsOpen: false,
+  theme: ((typeof window !== 'undefined' && localStorage.getItem('nexshell.theme')) as ThemeType) || 'dark',
+  accentPalette: ((typeof window !== 'undefined' && localStorage.getItem('nexshell.accent')) as AccentPalette) || 'nexshell',
+  uiFontFamily: (typeof window !== 'undefined' && localStorage.getItem('nexshell.fontFamily')) || "'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  uiFontSize: (typeof window !== 'undefined' && Number(localStorage.getItem('nexshell.fontSize'))) || 12.5,
+  borderRadius: (typeof window !== 'undefined' && Number(localStorage.getItem('nexshell.borderRadius'))) || 10,
 
   setProfiles: (profiles) =>
     set((state) => {
@@ -543,4 +563,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
   closeShareModal: () => set({ shareTarget: null }),
   openImportModal: () => set({ importShareOpen: true }),
   closeImportModal: () => set({ importShareOpen: false }),
+  openSettingsModal: () => set({ settingsOpen: true }),
+  closeSettingsModal: () => set({ settingsOpen: false }),
+  setTheme: (theme) => {
+    try {
+      localStorage.setItem('nexshell.theme', theme)
+    } catch {}
+    set({ theme })
+  },
+  setAccentPalette: (accentPalette) => {
+    try {
+      localStorage.setItem('nexshell.accent', accentPalette)
+    } catch {}
+    set({ accentPalette })
+  },
+  setUiFontFamily: (uiFontFamily) => {
+    try {
+      localStorage.setItem('nexshell.fontFamily', uiFontFamily)
+    } catch {}
+    set({ uiFontFamily })
+  },
+  setUiFontSize: (uiFontSize) => {
+    try {
+      localStorage.setItem('nexshell.fontSize', String(uiFontSize))
+    } catch {}
+    set({ uiFontSize })
+  },
+  setBorderRadius: (borderRadius) => {
+    try {
+      localStorage.setItem('nexshell.borderRadius', String(borderRadius))
+    } catch {}
+    set({ borderRadius })
+  },
 }))

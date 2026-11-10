@@ -2,9 +2,11 @@
 set -euo pipefail
 
 VERSION="${1:-}"
-NOTES="${2:-}"
+NOTES="${2:-Nexshell $VERSION release}"
 BASE_URL="${BASE_URL:-https://nexshell-updates.crdsyntax.workers.dev}"
 OUT_DIR="${OUT_DIR:-update-dist}"
+ADMIN_TOKEN="${ADMIN_TOKEN:-MHOqtbujTAVy7vsQZ9GE0SUW6rXJlzYf1LDocidKk4ne5CNP}"
+KEY_PATH="${KEY_PATH:-$HOME/.tauri/nexshell.key}"
 
 if [ -z "$VERSION" ]; then
   echo "Usage: ./scripts/publish-update.sh <version> [release_notes]"
@@ -14,8 +16,11 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "Building release bundles for version $VERSION..."
-bun run tauri build
+SKIP_BUILD="${SKIP_BUILD:-0}"
+if [ "$SKIP_BUILD" != "1" ]; then
+  echo "Building release bundles for version $VERSION..."
+  bun run tauri build
+fi
 
 BUNDLE_ROOT="src-tauri/target/release/bundle"
 mkdir -p "$OUT_DIR"
@@ -23,29 +28,41 @@ mkdir -p "$OUT_DIR"
 DEB_FILE=$(find "$BUNDLE_ROOT/deb" -name "*${VERSION}*.deb" 2>/dev/null | head -n 1 || true)
 APPIMAGE_FILE=$(find "$BUNDLE_ROOT/appimage" -name "*${VERSION}*.AppImage" 2>/dev/null | head -n 1 || true)
 
-PLATFORMS_JSON="{}"
+DEB_SIG=""
+APPIMAGE_SIG=""
 
 if [ -n "$DEB_FILE" ]; then
   DEB_NAME=$(basename "$DEB_FILE")
   cp "$DEB_FILE" "$OUT_DIR/$DEB_NAME"
-  SIG=""
   if [ -f "${DEB_FILE}.sig" ]; then
-    SIG=$(cat "${DEB_FILE}.sig")
+    cp "${DEB_FILE}.sig" "$OUT_DIR/${DEB_NAME}.sig"
+  elif [ -f "$KEY_PATH" ]; then
+    (unset TAURI_SIGNING_PRIVATE_KEY; bun run tauri signer sign -f "$KEY_PATH" -p "" --app-version "$VERSION" "$OUT_DIR/$DEB_NAME")
   fi
-  echo "Staged $DEB_NAME"
+  if [ -f "$OUT_DIR/${DEB_NAME}.sig" ]; then
+    DEB_SIG=$(cat "$OUT_DIR/${DEB_NAME}.sig")
+  fi
+  echo "Staged $DEB_NAME (sig: ${#DEB_SIG} chars)"
 fi
 
 if [ -n "$APPIMAGE_FILE" ]; then
   APPIMAGE_NAME=$(basename "$APPIMAGE_FILE")
   cp "$APPIMAGE_FILE" "$OUT_DIR/$APPIMAGE_NAME"
-  SIG=""
   if [ -f "${APPIMAGE_FILE}.sig" ]; then
-    SIG=$(cat "${APPIMAGE_FILE}.sig")
+    cp "${APPIMAGE_FILE}.sig" "$OUT_DIR/${APPIMAGE_NAME}.sig"
+  elif [ -f "$KEY_PATH" ]; then
+    (unset TAURI_SIGNING_PRIVATE_KEY; bun run tauri signer sign -f "$KEY_PATH" -p "" --app-version "$VERSION" "$OUT_DIR/$APPIMAGE_NAME")
   fi
-  echo "Staged $APPIMAGE_NAME"
+  if [ -f "$OUT_DIR/${APPIMAGE_NAME}.sig" ]; then
+    APPIMAGE_SIG=$(cat "$OUT_DIR/${APPIMAGE_NAME}.sig")
+  fi
+  echo "Staged $APPIMAGE_NAME (sig: ${#APPIMAGE_SIG} chars)"
 fi
 
 PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+PRIMARY_FILE="${APPIMAGE_NAME:-$DEB_NAME}"
+PRIMARY_SIG="${APPIMAGE_SIG:-$DEB_SIG}"
 
 cat <<EOF > "$OUT_DIR/latest.json"
 {
@@ -54,13 +71,16 @@ cat <<EOF > "$OUT_DIR/latest.json"
   "pub_date": "$PUB_DATE",
   "platforms": {
     "linux-x86_64": {
-      "url": "$BASE_URL/$(basename "${DEB_FILE:-}")",
-      "signature": "$(cat "${DEB_FILE}.sig" 2>/dev/null || true)"
+      "url": "$BASE_URL/$PRIMARY_FILE",
+      "signature": "$PRIMARY_SIG"
     }
   }
 }
 EOF
 
 echo "Done staging update in $OUT_DIR."
-echo "Upload with:"
-echo "node ../nexshell-updates/scripts/upload.mjs --dir ./update-dist --url $BASE_URL --token <ADMIN_TOKEN>"
+
+if [ -n "$ADMIN_TOKEN" ]; then
+  echo "Uploading to $BASE_URL ..."
+  node ../nexshell-updates/scripts/upload.mjs --dir "$OUT_DIR" --url "$BASE_URL" --token "$ADMIN_TOKEN"
+fi

@@ -7,6 +7,7 @@ import { terminalService } from '@/services/terminal.service'
 import { useAppStore } from '@/store/useAppStore'
 import { AlertIcon, FolderIcon, PlugIcon, RefreshIcon, TerminalIcon, XIcon } from '@/components/Icons'
 import { FileTree } from '@/components/FileTree'
+import { getTerminalTheme } from '@/lib/themes'
 import type { WorkspaceTab } from '@/types'
 
 interface TerminalViewProps {
@@ -22,31 +23,6 @@ const OSC7_INIT = [
   'fi; clear',
 ].join(' ') + '\n' 
 
-const THEME = {
-  background: '#ffffff',
-  foreground: '#111111',
-  cursor: '#1570ef',
-  cursorAccent: '#ffffff',
-  selectionBackground: '#e0f2fe',
-  selectionForeground: '#111111',
-  black: '#111111',
-  red: '#d92d20',
-  green: '#16b364',
-  yellow: '#d97706',
-  blue: '#1570ef',
-  magenta: '#7a5af8',
-  cyan: '#0891b2',
-  white: '#98a2b3',
-  brightBlack: '#667085',
-  brightRed: '#ef4444',
-  brightGreen: '#12b76a',
-  brightYellow: '#f59e0b',
-  brightBlue: '#2e90fa',
-  brightMagenta: '#9e77ed',
-  brightCyan: '#06aed4',
-  brightWhite: '#111111',
-}
-
 export function TerminalView({ tab }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -61,12 +37,19 @@ export function TerminalView({ tab }: TerminalViewProps) {
     state.profiles.find((p) => p.id === tab.profileId)
   )
   const closeTab = useAppStore((state) => state.closeTab)
+  const theme = useAppStore((state) => state.theme)
 
   useEffect(() => {
     if (tab.status !== 'connecting') {
       setIsReconnecting(false)
     }
   }, [tab.status])
+
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = getTerminalTheme(theme)
+    }
+  }, [theme])
 
   const handleReconnect = () => {
     setIsReconnecting(true)
@@ -87,7 +70,7 @@ export function TerminalView({ tab }: TerminalViewProps) {
       cursorStyle: 'bar',
       scrollback: 8_000,
       allowTransparency: true,
-      theme: THEME,
+      theme: getTerminalTheme(theme),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
