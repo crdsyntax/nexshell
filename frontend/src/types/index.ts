@@ -149,6 +149,13 @@ export interface ProcessInfo {
   command: string
 }
 
+export interface ProcessAuditEntry extends ProcessInfo {
+  id: string
+  timestamp: number
+  sampleTime: string
+  isSpike: boolean
+}
+
 export interface ProcessLocation {
   pid: number
   cwd: string | null

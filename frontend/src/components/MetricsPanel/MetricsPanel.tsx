@@ -10,6 +10,7 @@ import {
   ActivityIcon,
   AlertIcon,
   ClockIcon,
+  CopyIcon,
   CpuIcon,
   FileIcon,
   FolderIcon,
@@ -18,6 +19,7 @@ import {
   PlayIcon,
   RefreshIcon,
   RestartIcon,
+  SearchIcon,
   ServerIcon,
   StopIcon,
   TerminalIcon,
@@ -34,6 +36,7 @@ import {
 import type {
   MetricsHistory,
   NodeProcess,
+  ProcessAuditEntry,
   ProcessDetails,
   Pm2ActionKind,
   Pm2Logs,
@@ -160,6 +163,65 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
   const [starting, setStarting] = useState(true)
 
   const profile = profiles.find((item) => item.id === profileId)
+
+  const processAuditLog = useAppStore((state) => state.processAuditLogs[profileId] ?? [])
+  const clearProcessAuditLog = useAppStore((state) => state.clearProcessAuditLog)
+  const [processViewMode, setProcessViewMode] = useState<'live' | 'audit'>('live')
+  const [auditMinCpu, setAuditMinCpu] = useState<number>(0)
+  const [auditSearch, setAuditSearch] = useState('')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const filteredAuditLog: ProcessAuditEntry[] = processAuditLog.filter((entry) => {
+    if (entry.cpu < auditMinCpu) return false
+    if (!auditSearch.trim()) return true
+    const q = auditSearch.toLowerCase()
+    return (
+      String(entry.pid).includes(q) ||
+      entry.user.toLowerCase().includes(q) ||
+      entry.command.toLowerCase().includes(q)
+    )
+  })
+
+  const nowSec = snapshot?.timestamp ?? Math.floor(Date.now() / 1000)
+  const recentSpike = processAuditLog.find(
+    (e) => (e.isSpike || e.cpu >= 50.0) && nowSec - e.timestamp <= 120,
+  )
+  const spikeCount = processAuditLog.filter((e) => e.isSpike || e.cpu >= 50.0).length
+
+  const copyCommand = (id: string, cmd: string) => {
+    void navigator.clipboard.writeText(cmd)
+    setCopiedId(id)
+    pushToast('info', 'Command line copied to clipboard')
+    setTimeout(() => setCopiedId(null), 1500)
+  }
+
+  const exportAuditLogCsv = () => {
+    if (filteredAuditLog.length === 0) {
+      pushToast('info', 'No process audit entries to export')
+      return
+    }
+    const headers = ['Timestamp', 'PID', 'User', 'CPU%', 'MEM%', 'RSS_KB', 'Command']
+    const rows = filteredAuditLog.map((e) => [
+      `"${e.sampleTime}"`,
+      e.pid,
+      `"${e.user}"`,
+      e.cpu.toFixed(1),
+      e.mem.toFixed(1),
+      e.rssKb,
+      `"${e.command.replace(/"/g, '""')}"`,
+    ])
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `process-audit-${profileId}-${Date.now()}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    pushToast('success', `Exported ${filteredAuditLog.length} process audit entries`)
+  }
 
   const openLocation = (process: ProcessInfo) => {
     if (!profile) {
@@ -559,63 +621,246 @@ export function MetricsPanel({ profileId }: MetricsPanelProps) {
       <div className="monitor-columns">
         <section className="process-section">
           <div className="section-title">
-            <h3>Top processes</h3>
-          <span>sorted by CPU · sampled {new Date(snapshot.timestamp * 1000).toLocaleTimeString()}</span>
-        </div>
-        <div className="process-table">
-          <div className="process-table__head">
-            <span>PID</span>
-            <span>USER</span>
-            <span>CPU%</span>
-            <span>MEM%</span>
-            <span>RSS</span>
-            <span>COMMAND</span>
-            <span className="process-table__actions-head">ACTIONS</span>
-          </div>
-          {snapshot.processes.map((process) => (
-            <div className="process-table__row" key={process.pid}>
-              <span className="mono">{process.pid}</span>
-              <span>{process.user}</span>
-              <span className={`mono ${process.cpu > 50 ? 'is-hot' : ''}`}>
-                {process.cpu.toFixed(1)}
-              </span>
-              <span className="mono">{process.mem.toFixed(1)}</span>
-              <span className="mono">{formatKb(process.rssKb)}</span>
-              <span className="mono process-table__cmd" title={process.command}>
-                {process.command}
-              </span>
-              <div className="process-actions">
+            <div className="process-title-group">
+              <h3>Top processes</h3>
+              <div className="process-tabs">
                 <button
-                  className="icon-button"
-                  title="Open the process working directory in a new terminal"
-                  onClick={() => openLocation(process)}
-                  disabled={!profile}
+                  type="button"
+                  className={`process-tab ${processViewMode === 'live' ? 'is-active' : ''}`}
+                  onClick={() => setProcessViewMode('live')}
                 >
-                  <TerminalIcon size={13} />
+                  Live
                 </button>
                 <button
-                  className="icon-button is-danger"
-                  title={
-                    process.pid <= 1
-                      ? 'PID 1 cannot be killed'
-                      : `Send a signal to PID ${process.pid}`
-                  }
-                  disabled={process.pid <= 1}
-                  onClick={() => {
-                    setKillTarget(process)
-                    setKillSignal('TERM')
-                    setKillError(null)
-                  }}
+                  type="button"
+                  className={`process-tab ${processViewMode === 'audit' ? 'is-active' : ''}`}
+                  onClick={() => setProcessViewMode('audit')}
                 >
-                  <XIcon size={13} />
+                  Audit Log ({processAuditLog.length})
+                  {spikeCount > 0 && <span className="process-spike-tag">{spikeCount} spikes</span>}
                 </button>
               </div>
             </div>
-          ))}
-          {snapshot.processes.length === 0 && (
-            <div className="process-table__empty">no process data returned</div>
+            {processViewMode === 'live' ? (
+              <span>sorted by CPU · sampled {new Date(snapshot.timestamp * 1000).toLocaleTimeString()}</span>
+            ) : (
+              <div className="process-audit-header-actions">
+                <button
+                  type="button"
+                  className="top-action"
+                  onClick={exportAuditLogCsv}
+                  title="Export filtered log as CSV"
+                >
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  className="top-action is-danger"
+                  onClick={() => clearProcessAuditLog(profileId)}
+                  title="Clear all recorded process audit entries"
+                >
+                  Clear Log
+                </button>
+              </div>
+            )}
+          </div>
+
+          {processViewMode === 'live' && recentSpike && (
+            <div
+              className="process-spike-banner"
+              onClick={() => {
+                setProcessViewMode('audit')
+                setAuditMinCpu(40)
+              }}
+              title="Click to inspect CPU spike in Audit Log"
+            >
+              <span className="process-spike-banner__badge">SPIKE DETECTED</span>
+              <span className="process-spike-banner__desc">
+                PID <strong>{recentSpike.pid}</strong> ({recentSpike.user}) reached{' '}
+                <strong className="is-hot">{recentSpike.cpu.toFixed(1)}% CPU</strong> at {recentSpike.sampleTime}
+              </span>
+              <span className="process-spike-banner__cmd" title={recentSpike.command}>{recentSpike.command}</span>
+              <span className="process-spike-banner__action">View Log &rarr;</span>
+            </div>
           )}
-        </div>
+
+          {processViewMode === 'live' ? (
+            <div className="process-table">
+              <div className="process-table__head">
+                <span>PID</span>
+                <span>USER</span>
+                <span>CPU%</span>
+                <span>MEM%</span>
+                <span>RSS</span>
+                <span>COMMAND</span>
+                <span className="process-table__actions-head">ACTIONS</span>
+              </div>
+              {snapshot.processes.map((process) => (
+                <div className="process-table__row" key={process.pid}>
+                  <span className="mono">{process.pid}</span>
+                  <span>{process.user}</span>
+                  <span className={`mono ${process.cpu > 50 ? 'is-hot' : ''}`}>
+                    {process.cpu.toFixed(1)}
+                  </span>
+                  <span className="mono">{process.mem.toFixed(1)}</span>
+                  <span className="mono">{formatKb(process.rssKb)}</span>
+                  <span className="mono process-table__cmd" title={process.command}>
+                    {process.command}
+                  </span>
+                  <div className="process-actions">
+                    <button
+                      className="icon-button"
+                      title={copiedId === `live-${process.pid}` ? 'Copied!' : 'Copy command line'}
+                      onClick={() => copyCommand(`live-${process.pid}`, process.command)}
+                    >
+                      <CopyIcon size={12} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      title="Open the process working directory in a new terminal"
+                      onClick={() => openLocation(process)}
+                      disabled={!profile}
+                    >
+                      <TerminalIcon size={13} />
+                    </button>
+                    <button
+                      className="icon-button is-danger"
+                      title={
+                        process.pid <= 1
+                          ? 'PID 1 cannot be killed'
+                          : `Send a signal to PID ${process.pid}`
+                      }
+                      disabled={process.pid <= 1}
+                      onClick={() => {
+                        setKillTarget(process)
+                        setKillSignal('TERM')
+                        setKillError(null)
+                      }}
+                    >
+                      <XIcon size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {snapshot.processes.length === 0 && (
+                <div className="process-table__empty">no process data returned</div>
+              )}
+            </div>
+          ) : (
+            <div className="process-audit-container">
+              <div className="process-audit-toolbar">
+                <div className="process-audit-search">
+                  <SearchIcon size={13} />
+                  <input
+                    type="text"
+                    placeholder="Filter command, user, PID..."
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                  />
+                  {auditSearch && (
+                    <button
+                      type="button"
+                      className="process-audit-search__clear"
+                      onClick={() => setAuditSearch('')}
+                    >
+                      <XIcon size={11} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="process-audit-thresholds">
+                  <span className="process-audit-threshold-label">Threshold:</span>
+                  {[
+                    { label: 'All', val: 0 },
+                    { label: '≥10%', val: 10 },
+                    { label: '≥30%', val: 30 },
+                    { label: '≥50%', val: 50 },
+                    { label: '≥80%', val: 80 },
+                  ].map((lvl) => (
+                    <button
+                      key={lvl.val}
+                      type="button"
+                      className={`process-audit-pill ${auditMinCpu === lvl.val ? 'is-active' : ''}`}
+                      onClick={() => setAuditMinCpu(lvl.val)}
+                    >
+                      {lvl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="process-table process-audit-table">
+                <div className="process-table__head process-audit-head">
+                  <span>TIME</span>
+                  <span>PID</span>
+                  <span>USER</span>
+                  <span>CPU%</span>
+                  <span>MEM%</span>
+                  <span>COMMAND</span>
+                  <span className="process-table__actions-head">ACTIONS</span>
+                </div>
+                <div className="process-audit-body">
+                  {filteredAuditLog.map((entry) => (
+                    <div
+                      className={`process-table__row process-audit-row ${entry.isSpike || entry.cpu >= 50 ? 'is-spike-row' : ''}`}
+                      key={entry.id}
+                    >
+                      <span className="mono process-audit-time">{entry.sampleTime}</span>
+                      <span className="mono">{entry.pid}</span>
+                      <span className="process-audit-user" title={entry.user}>{entry.user}</span>
+                      <span className={`mono ${entry.cpu >= 50 ? 'is-hot is-spike-val' : entry.cpu >= 20 ? 'is-warm' : ''}`}>
+                        {entry.cpu.toFixed(1)}%
+                      </span>
+                      <span className="mono">{entry.mem.toFixed(1)}%</span>
+                      <span className="mono process-table__cmd" title={entry.command}>
+                        {entry.command}
+                      </span>
+                      <div className="process-actions">
+                        <button
+                          className="icon-button"
+                          title={copiedId === entry.id ? 'Copied!' : 'Copy command line'}
+                          onClick={() => copyCommand(entry.id, entry.command)}
+                        >
+                          <CopyIcon size={12} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          title="Open the process working directory in a new terminal"
+                          onClick={() => openLocation(entry)}
+                          disabled={!profile}
+                        >
+                          <TerminalIcon size={13} />
+                        </button>
+                        <button
+                          className="icon-button is-danger"
+                          title={
+                            entry.pid <= 1
+                              ? 'PID 1 cannot be killed'
+                              : `Send a signal to PID ${entry.pid}`
+                          }
+                          disabled={entry.pid <= 1}
+                          onClick={() => {
+                            setKillTarget(entry)
+                            setKillSignal('TERM')
+                            setKillError(null)
+                          }}
+                        >
+                          <XIcon size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredAuditLog.length === 0 && (
+                    <div className="process-table__empty">
+                      {processAuditLog.length === 0
+                        ? 'No processes logged yet. Active processes will appear as sampled.'
+                        : 'No processes matched current filters.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="pm2-section">

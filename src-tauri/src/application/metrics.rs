@@ -29,7 +29,7 @@ cat /proc/net/dev 2>/dev/null
 echo __DISK__
 df -Pk / 2>/dev/null | tail -n 1
 echo __PROCS__
-ps -eo pid=,user=,pcpu=,pmem=,rss=,args= --sort=-pcpu 2>/dev/null | head -n 20
+ps -eo pid=,user=,pcpu=,pmem=,rss=,args= --sort=-pcpu 2>/dev/null | head -n 35
 exit 0
 "#;
 

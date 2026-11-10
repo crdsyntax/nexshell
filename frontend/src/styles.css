@@ -2034,6 +2034,251 @@ body.theme-dark .terminal-overlay__btn-secondary:hover:not(:disabled),
   font-size: 11px;
 }
 
+/* Process Audit Log & Spikes --------------------------------------- */
+
+.process-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.process-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-2, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  padding: 2px;
+  gap: 2px;
+}
+
+.process-tab {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-2xs, 3px);
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 120ms ease;
+  font-family: inherit;
+}
+
+.process-tab:hover {
+  color: var(--text);
+}
+
+.process-tab.is-active {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.process-spike-tag {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-radius: 9999px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+
+.process-spike-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-xs);
+  padding: 7px 12px;
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.process-spike-banner:hover {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.process-spike-banner__badge {
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.process-spike-banner__desc {
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.process-spike-banner__cmd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.process-spike-banner__action {
+  font-weight: 600;
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.process-audit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.process-audit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.process-audit-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  flex: 1;
+  min-width: 140px;
+  color: var(--muted);
+}
+
+.process-audit-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11px;
+  color: var(--text);
+  width: 100%;
+  font-family: inherit;
+}
+
+.process-audit-search__clear {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.process-audit-thresholds {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.process-audit-threshold-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+}
+
+.process-audit-pill {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-2xs, 3px);
+  padding: 3px 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 120ms ease;
+  font-family: inherit;
+}
+
+.process-audit-pill:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.process-audit-pill.is-active {
+  background: var(--surface-active, #f1f5f9);
+  color: var(--text);
+  font-weight: 600;
+  border-color: var(--border-strong, #cbd5e1);
+}
+
+body.theme-dark .process-audit-pill.is-active,
+[data-theme='dark'] .process-audit-pill.is-active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.process-audit-body {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.process-audit-row.is-spike-row {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.process-audit-row.is-spike-row:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.process-audit-time {
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.process-audit-user {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.is-spike-val {
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.is-warm {
+  color: #f59e0b;
+}
+
+.process-audit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitor-columns .process-audit-head,
+.monitor-columns .process-audit-row {
+  grid-template-columns: 68px 46px 56px 48px minmax(0, 1fr) 58px !important;
+}
+
+.monitor-columns .process-audit-head span:nth-child(5),
+.monitor-columns .process-audit-row > :nth-child(5) {
+  display: none !important;
+}
+
 /* Services --------------------------------------------------------- */
 
 .service-strip {

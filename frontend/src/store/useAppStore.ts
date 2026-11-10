@@ -4,6 +4,7 @@ import type {
   MetricsHistory,
   MetricsSnapshot,
   PoolStats,
+  ProcessAuditEntry,
   Profile,
   ServerInfo,
   ServiceStatus,
@@ -33,6 +34,7 @@ interface AppStore {
   terminalCwd: Record<string, string>
   alerts: Record<string, boolean>
   history: Record<string, MetricsHistory>
+  processAuditLogs: Record<string, ProcessAuditEntry[]>
   metricsErrors: Record<string, string>
   services: Record<string, WebServiceInfo[]>
   serviceStatuses: Record<string, ServiceStatus[]>
@@ -62,6 +64,7 @@ interface AppStore {
   setTabStatus: (tabId: string, status: TabStatus, error?: string) => void
   setServerInfo: (profileId: string, info: ServerInfo) => void
   setMetrics: (profileId: string, snapshot: MetricsSnapshot) => void
+  clearProcessAuditLog: (profileId: string) => void
   setMetricsError: (profileId: string, error: string) => void
   setServices: (profileId: string, services: WebServiceInfo[]) => void
   setServiceStatuses: (profileId: string, statuses: ServiceStatus[]) => void
@@ -96,6 +99,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   terminalCwd: {},
   alerts: {},
   history: {},
+  processAuditLogs: {},
   metricsErrors: {},
   services: {},
   serviceStatuses: {},
@@ -394,6 +398,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const mem = snapshot.memTotalKb
         ? (snapshot.memUsedKb / snapshot.memTotalKb) * 100
         : 0
+
+      // Audit process logging: record top active processes and CPU spikes
+      const existingAudit = state.processAuditLogs[profileId] ?? []
+      const timeStr = new Date(snapshot.timestamp * 1000).toLocaleTimeString()
+      const newEntries: ProcessAuditEntry[] = []
+
+      for (const proc of snapshot.processes) {
+        const isSpike = proc.cpu >= 40.0 || (snapshot.cpuTotal >= 70.0 && proc.cpu >= 15.0)
+        if (proc.cpu >= 0.5 || isSpike) {
+          newEntries.push({
+            ...proc,
+            id: `${proc.pid}-${snapshot.timestamp}-${Math.random().toString(36).slice(2, 6)}`,
+            timestamp: snapshot.timestamp,
+            sampleTime: timeStr,
+            isSpike,
+          })
+        }
+      }
+
+      if (newEntries.length === 0 && snapshot.processes.length > 0) {
+        const top = snapshot.processes[0]
+        newEntries.push({
+          ...top,
+          id: `${top.pid}-${snapshot.timestamp}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: snapshot.timestamp,
+          sampleTime: timeStr,
+          isSpike: false,
+        })
+      }
+
+      const updatedAudit = [...newEntries, ...existingAudit].slice(0, 1000)
+
       return {
         metrics: { ...state.metrics, [profileId]: snapshot },
         history: {
@@ -405,9 +441,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
             tx: pushCapped(previous.tx, snapshot.netTxBps),
           },
         },
+        processAuditLogs: {
+          ...state.processAuditLogs,
+          [profileId]: updatedAudit,
+        },
         metricsErrors: { ...state.metricsErrors, [profileId]: '' },
       }
     }),
+
+  clearProcessAuditLog: (profileId) =>
+    set((state) => ({
+      processAuditLogs: { ...state.processAuditLogs, [profileId]: [] },
+    })),
 
   setMetricsError: (profileId, error) =>
     set((state) => ({
@@ -429,12 +474,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const servers = { ...state.servers }
       const metrics = { ...state.metrics }
       const history = { ...state.history }
+      const processAuditLogs = { ...state.processAuditLogs }
       const services = { ...state.services }
       const statuses = { ...state.serviceStatuses }
       const pendingDbAuth = { ...state.pendingDbAuth }
       delete servers[profileId]
       delete metrics[profileId]
       delete history[profileId]
+      delete processAuditLogs[profileId]
       delete services[profileId]
       delete statuses[profileId]
       delete pendingDbAuth[profileId]
@@ -442,6 +489,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         servers,
         metrics,
         history,
+        processAuditLogs,
         services,
         serviceStatuses: statuses,
         pendingDbAuth,
