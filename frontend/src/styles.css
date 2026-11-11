@@ -6728,40 +6728,65 @@ body.theme-dark .remediation-guide-pill.is-active {
   gap: 3px;
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
-  border-radius: 0;
-  background: #f8fafc;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2);
 }
 
 .incident-summary span {
-  font-size: 8px;
+  font-family: var(--font-display);
+  font-size: 8.5px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.08em;
   color: var(--muted-2);
+  font-weight: 600;
 }
 
 .incident-summary strong {
   font-family: var(--mono);
   font-size: 20px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
 }
 
+.incident-summary .is-critical {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-2));
+}
 .incident-summary .is-critical strong,
 .incident-summary .is-critical span {
   color: var(--danger);
 }
+
+.incident-summary .is-warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface-2));
+}
 .incident-summary .is-warn strong,
 .incident-summary .is-warn span {
   color: var(--warn);
+}
+
+.incident-summary .is-ok {
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  background: color-mix(in srgb, var(--ok) 10%, var(--surface-2));
 }
 .incident-summary .is-ok strong,
 .incident-summary .is-ok span {
   color: var(--ok);
 }
 
+.incident-summary .is-info {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+.incident-summary .is-info strong,
+.incident-summary .is-info span {
+  color: var(--accent);
+}
+
 .incident-block {
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm, 6px);
   background: var(--panel);
   overflow: hidden;
 }
@@ -6772,16 +6797,18 @@ body.theme-dark .remediation-guide-pill.is-active {
   justify-content: space-between;
   gap: 10px;
   padding: 9px 12px;
-  background: #f8fafc;
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border-soft);
 }
 
 .incident-block > header h3 {
   margin: 0;
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
+  letter-spacing: 0.05em;
+  color: var(--text);
 }
 
 .incident-block > header span {
@@ -6796,8 +6823,8 @@ body.theme-dark .remediation-guide-pill.is-active {
   gap: 10px;
   align-items: center;
   padding: 7px 12px;
-  border-bottom: 1px solid #232936;
-  font-size: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
   color: var(--muted);
 }
 
@@ -6806,7 +6833,7 @@ body.theme-dark .remediation-guide-pill.is-active {
 }
 
 .incident-row:hover {
-  background: #e0f2fe;
+  background: var(--surface-hover, var(--surface-2));
 }
 
 .incident-row__main {
@@ -6839,8 +6866,8 @@ body.theme-dark .remediation-guide-pill.is-active {
 .incident-empty {
   margin: 0;
   padding: 10px 12px;
-  color: var(--muted-2);
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .incident-pre {
@@ -6848,9 +6875,10 @@ body.theme-dark .remediation-guide-pill.is-active {
   padding: 9px 12px;
   max-height: 220px;
   overflow: auto;
-  color: var(--muted-2);
+  color: var(--muted);
+  background: var(--bg-inset);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 9.5px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -6864,7 +6892,7 @@ body.theme-dark .remediation-guide-pill.is-active {
 
 .incident-details details {
   border: 1px solid var(--border-soft);
-  border-radius: 0;
+  border-radius: var(--radius-xs, 4px);
   background: var(--panel);
   overflow: hidden;
 }
@@ -6873,8 +6901,15 @@ body.theme-dark .remediation-guide-pill.is-active {
   padding: 8px 10px;
   cursor: pointer;
   list-style: none;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 500;
+  transition: background 120ms ease;
+}
+
+.incident-details summary:hover {
+  background: var(--surface-hover, var(--surface-2));
 }
 
 .incident-details summary::-webkit-details-marker {
@@ -6887,9 +6922,10 @@ body.theme-dark .remediation-guide-pill.is-active {
   border-top: 1px solid var(--border-soft);
   max-height: 200px;
   overflow: auto;
-  color: var(--muted-2);
+  color: var(--muted);
+  background: var(--bg-inset);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 9.5px;
   line-height: 1.45;
   white-space: pre-wrap;
 }
