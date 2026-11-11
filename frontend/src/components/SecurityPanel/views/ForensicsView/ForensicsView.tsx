@@ -123,6 +123,10 @@ export function ForensicsView({ profileId }: { profileId: string }) {
     }
   }
 
+  const activeSessionsCount = useMemo(
+    () => sessions.filter((s) => s.current || s.end?.toLowerCase().includes('logged in')).length,
+    [sessions],
+  )
   const failedCount = useMemo(
     () => attempts.filter((item) => item.status === 'failed').length,
     [attempts],
@@ -200,6 +204,11 @@ export function ForensicsView({ profileId }: { profileId: string }) {
         <div className="forensics-stats">
           {section === 'sessions' && (
             <>
+              {activeSessionsCount > 0 && (
+                <span className="forensics-stat-pill is-ok">
+                  <span className="forensics-live-dot" /> <strong>{activeSessionsCount}</strong> activa{activeSessionsCount > 1 ? 's' : ''}
+                </span>
+              )}
               <span className="forensics-stat-pill">
                 <strong>{sessions.length}</strong> sesiones
               </span>
@@ -347,7 +356,7 @@ export function ForensicsView({ profileId }: { profileId: string }) {
           <div className="network-block">
             <header>
               <h3>
-                <ClockIcon size={13} /> Historial de accesos (last -aF)
+                <ClockIcon size={13} /> Historial y sesiones activas (last / who)
               </h3>
               <span>{filteredSessions.length} filas</span>
             </header>
@@ -366,11 +375,20 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                 const parsedStart = parseLastDate(session.start)
                 const isLive = session.current || session.end?.toLowerCase().includes('logged in')
                 const parsedEnd = parseLastDate(session.end)
+                const isSelf = Boolean(session.isCurrent)
 
                 return (
-                  <div className="forensics-row" key={`${session.user}-${session.tty}-${session.start}-${index}`}>
+                  <div
+                    className={`forensics-row ${isSelf ? 'is-current-session' : ''}`}
+                    key={`${session.user}-${session.tty}-${session.start}-${index}`}
+                  >
                     <span className={`mono forensics-user ${session.user === 'root' ? 'is-root' : ''}`}>
                       {session.user}
+                      {isSelf && (
+                        <span className="forensics-self-pill" title="Sesión activa correspondiente a esta conexión">
+                          actual
+                        </span>
+                      )}
                     </span>
                     <span className="mono forensics-tty">{session.tty}</span>
                     <span className="mono forensics-ip">{session.from || '—'}</span>
@@ -386,8 +404,8 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                     </span>
                     <span>
                       {isLive ? (
-                        <span className="forensics-badge is-live">
-                          <span className="forensics-live-dot" /> en sesión
+                        <span className={`forensics-badge ${isSelf ? 'is-current' : 'is-live'}`}>
+                          <span className={`forensics-live-dot ${isSelf ? 'is-current' : ''}`} /> {isSelf ? 'tu sesión' : 'en sesión'}
                         </span>
                       ) : parsedEnd ? (
                         <span className="forensics-time-group" title={session.end}>
@@ -403,7 +421,11 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                       <span className="mono">{session.duration || '—'}</span>
                     </span>
                     <span>
-                      {isLive ? (
+                      {isSelf ? (
+                        <span className="forensics-badge is-current" title="Esta es tu sesión SSH actual">
+                          <span className="forensics-live-dot is-current" /> actual
+                        </span>
+                      ) : isLive ? (
                         <span className="forensics-badge is-live">
                           <span className="forensics-live-dot" /> activa
                         </span>
@@ -412,7 +434,7 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                       )}
                     </span>
                     <span className="forensics-actions">
-                      {session.from && session.from !== '—' && (
+                      {session.from && session.from !== '—' && !isSelf && (
                         blockedIps.includes(session.from) ? (
                           <button
                             type="button"
@@ -436,6 +458,11 @@ export function ForensicsView({ profileId }: { profileId: string }) {
                             {blocking === session.from ? '…' : 'Bloquear'}
                           </button>
                         )
+                      )}
+                      {isSelf && (
+                        <span className="forensics-badge is-self-tag" title="Conexión activa en uso por Nexshell">
+                          en uso
+                        </span>
                       )}
                     </span>
                   </div>

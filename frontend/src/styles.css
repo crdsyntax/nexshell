@@ -10025,6 +10025,15 @@ body {
   background: var(--surface-hover, var(--surface-2));
 }
 
+.forensics-row.is-current-session {
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  border-left: 3px solid var(--accent);
+}
+
+.forensics-row.is-current-session:hover {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+}
+
 .forensics-row--head {
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
@@ -10167,12 +10176,48 @@ body {
   color: var(--warn);
 }
 
+.forensics-self-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 6px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.forensics-badge.is-current {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.forensics-badge.is-self-tag {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 9.5px;
+  opacity: 0.85;
+}
+
 .forensics-live-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--ok);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+.forensics-live-dot.is-current {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .forensics-actions {

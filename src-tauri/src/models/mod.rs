@@ -314,7 +314,7 @@ pub struct AlertEvent {
     pub timestamp: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEntry {
     pub user: String,
@@ -324,6 +324,8 @@ pub struct SessionEntry {
     pub end: String,
     pub duration: String,
     pub current: bool,
+    #[serde(default)]
+    pub is_current: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

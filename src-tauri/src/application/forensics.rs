@@ -24,20 +24,189 @@ impl ForensicsManager {
         pools: &PoolManager,
         profile: &ConnectionProfile,
     ) -> AppResult<Vec<SessionEntry>> {
-        let script =
-            format!("LC_ALL=C last -aF -n {SESSION_LIMIT} 2>/dev/null | head -n {SESSION_LIMIT}");
+        let script = format!(
+            r####"export LC_ALL=C 2>/dev/null
+cur_ip=$(echo "$SSH_CLIENT" | awk '{{print $1}}')
+[ -z "$cur_ip" ] && cur_ip=$(echo "$SSH_CONNECTION" | awk '{{print $1}}')
+cur_tty=$(tty 2>/dev/null | sed 's|^/dev/||')
+[ "$cur_tty" = "not a tty" ] && cur_tty=""
+echo "___CURRENT___ $cur_ip $cur_tty"
+
+echo "___LAST___"
+if command -v last >/dev/null 2>&1; then
+  out=$(last -aF -n {limit} 2>/dev/null)
+  if [ -z "$out" ] || echo "$out" | grep -qi "unrecognized"; then
+    out=$(last -a -n {limit} 2>/dev/null)
+  fi
+  if [ -z "$out" ] || echo "$out" | grep -qi "unrecognized"; then
+    out=$(last -n {limit} 2>/dev/null)
+  fi
+  echo "$out"
+elif command -v wtmpdb >/dev/null 2>&1; then
+  wtmpdb last -n {limit} 2>/dev/null
+fi
+
+echo "___WHO___"
+who -u 2>/dev/null || who 2>/dev/null
+echo "___W___"
+w -h 2>/dev/null
+echo "___SSHD___"
+ps -eo pid,user,tty,args 2>/dev/null | grep -E 'sshd: [a-zA-Z0-9_.-]+@' | grep -v grep 2>/dev/null
+exit 0
+"####,
+            limit = SESSION_LIMIT
+        );
         let output = pools
             .execute_with_category(&profile.id, &as_root(profile, &script), TIMEOUT, "security")
             .await?;
+
+        let mut cur_ip = String::new();
+        let mut cur_tty = String::new();
+        let mut section = "";
         let mut sessions = Vec::new();
+        let mut active_sessions: Vec<SessionEntry> = Vec::new();
+
         for line in output.stdout.lines() {
-            if line.trim().is_empty() || line.starts_with("wtmp") || line.starts_with("btmp") {
+            let trimmed = line.trim();
+            if trimmed.starts_with("___CURRENT___") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if parts.len() > 1 && parts[1] != "-" {
+                    cur_ip = parts[1].to_string();
+                }
+                if parts.len() > 2 && parts[2] != "not" && parts[2] != "-" {
+                    cur_tty = parts[2].to_string();
+                }
+                continue;
+            } else if trimmed == "___LAST___" {
+                section = "last";
+                continue;
+            } else if trimmed == "___WHO___" {
+                section = "who";
+                continue;
+            } else if trimmed == "___W___" {
+                section = "w";
+                continue;
+            } else if trimmed == "___SSHD___" {
+                section = "sshd";
                 continue;
             }
-            if let Some(entry) = parse_session(line) {
-                sessions.push(entry);
+
+            if trimmed.is_empty() || trimmed.starts_with("wtmp") || trimmed.starts_with("btmp") {
+                continue;
+            }
+
+            match section {
+                "last" => {
+                    if let Some(entry) = parse_session(trimmed) {
+                        sessions.push(entry);
+                    }
+                }
+                "who" => {
+                    if let Some(entry) = parse_who_line(trimmed) {
+                        active_sessions.push(entry);
+                    }
+                }
+                "w" => {
+                    if let Some(entry) = parse_w_line(trimmed) {
+                        active_sessions.push(entry);
+                    }
+                }
+                "sshd" => {
+                    if let Some(entry) = parse_sshd_proc(trimmed) {
+                        active_sessions.push(entry);
+                    }
+                }
+                _ => {}
             }
         }
+
+        // Merge active sessions into sessions:
+        for active in active_sessions {
+            let already_in_sessions = sessions.iter().any(|s| {
+                (!active.tty.is_empty() && s.tty == active.tty && s.current)
+                    || (s.user == active.user && s.from == active.from && s.current)
+            });
+            if !already_in_sessions {
+                sessions.insert(0, active);
+            }
+        }
+
+        // Identify current session:
+        let mut matched = false;
+        if !cur_tty.is_empty() {
+            for s in sessions.iter_mut() {
+                if s.current && (s.tty == cur_tty || s.tty.ends_with(&cur_tty)) {
+                    s.is_current = true;
+                    matched = true;
+                    break;
+                }
+            }
+        }
+
+        if !matched && !cur_ip.is_empty() {
+            for s in sessions.iter_mut() {
+                if s.current
+                    && (s.from == cur_ip || s.from.contains(&cur_ip))
+                    && s.user == profile.username
+                {
+                    s.is_current = true;
+                    matched = true;
+                    break;
+                }
+            }
+        }
+
+        if !matched && !cur_ip.is_empty() {
+            for s in sessions.iter_mut() {
+                if s.current && (s.from == cur_ip || s.from.contains(&cur_ip)) {
+                    s.is_current = true;
+                    matched = true;
+                    break;
+                }
+            }
+        }
+
+        if !matched {
+            for s in sessions.iter_mut() {
+                if s.current && s.user == profile.username {
+                    s.is_current = true;
+                    matched = true;
+                    break;
+                }
+            }
+        }
+
+        if !matched {
+            let active_count = sessions.iter().filter(|s| s.current).count();
+            if active_count == 1 {
+                if let Some(s) = sessions.iter_mut().find(|s| s.current) {
+                    s.is_current = true;
+                }
+            }
+        }
+
+        // If sessions is still empty, guarantee at least the active connection is displayed
+        if sessions.is_empty() {
+            sessions.push(SessionEntry {
+                user: profile.username.clone(),
+                tty: if !cur_tty.is_empty() {
+                    cur_tty
+                } else {
+                    "pts/0".to_string()
+                },
+                from: if !cur_ip.is_empty() {
+                    cur_ip
+                } else {
+                    profile.host.clone()
+                },
+                start: "en curso".to_string(),
+                end: "still logged in".to_string(),
+                duration: String::new(),
+                current: true,
+                is_current: true,
+            });
+        }
+
         Ok(sessions)
     }
 
@@ -284,6 +453,7 @@ fn parse_session(line: &str) -> Option<SessionEntry> {
             end: "still running".to_string(),
             duration: String::new(),
             current: true,
+            is_current: false,
         });
     }
 
@@ -326,6 +496,118 @@ fn parse_session(line: &str) -> Option<SessionEntry> {
         end,
         duration,
         current,
+        is_current: false,
+    })
+}
+
+fn parse_who_line(line: &str) -> Option<SessionEntry> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with("NAME") || trimmed.starts_with("USER") {
+        return None;
+    }
+    let fields: Vec<&str> = trimmed.split_whitespace().collect();
+    if fields.len() < 3 {
+        return None;
+    }
+    let user = fields[0].to_string();
+    if user == "system" || user == "run-level" || user == "LOGIN" {
+        return None;
+    }
+    let tty = fields[1]
+        .trim_start_matches('+')
+        .trim_start_matches('-')
+        .to_string();
+    let from = if let (Some(open), Some(close)) = (trimmed.rfind('('), trimmed.rfind(')')) {
+        if close > open {
+            trimmed[open + 1..close].trim().to_string()
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    let start = fields[2..fields.len().saturating_sub(if !from.is_empty() { 1 } else { 0 })]
+        .iter()
+        .filter(|token| !matches!(**token, "." | "+" | "-") && token.parse::<u32>().is_err())
+        .copied()
+        .collect::<Vec<&str>>()
+        .join(" ");
+
+    Some(SessionEntry {
+        user,
+        tty,
+        from,
+        start: if start.is_empty() {
+            "en curso".to_string()
+        } else {
+            start
+        },
+        end: "still logged in".to_string(),
+        duration: String::new(),
+        current: true,
+        is_current: false,
+    })
+}
+
+fn parse_w_line(line: &str) -> Option<SessionEntry> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with("USER") || trimmed.starts_with("TTY") {
+        return None;
+    }
+    let fields: Vec<&str> = trimmed.split_whitespace().collect();
+    if fields.len() < 4 {
+        return None;
+    }
+    let user = fields[0].to_string();
+    let tty = fields[1].to_string();
+    let from_raw = fields[2];
+    let from = if from_raw == "-" || from_raw == ":0" {
+        String::new()
+    } else {
+        from_raw.to_string()
+    };
+    let start = fields[3].to_string();
+
+    Some(SessionEntry {
+        user,
+        tty,
+        from,
+        start,
+        end: "still logged in".to_string(),
+        duration: String::new(),
+        current: true,
+        is_current: false,
+    })
+}
+
+fn parse_sshd_proc(line: &str) -> Option<SessionEntry> {
+    let trimmed = line.trim();
+    if !trimmed.contains("sshd:") {
+        return None;
+    }
+    let part = trimmed.split("sshd:").nth(1)?.trim();
+    let mut user_tty = part.split('@');
+    let user = user_tty.next()?.trim().to_string();
+    let tty_candidate = user_tty.next()?.trim();
+    let tty = if tty_candidate == "notty" {
+        "ssh".to_string()
+    } else {
+        tty_candidate.to_string()
+    };
+    if user.is_empty() {
+        return None;
+    }
+
+    Some(SessionEntry {
+        user,
+        tty,
+        from: String::new(),
+        start: "en curso".to_string(),
+        end: "still logged in".to_string(),
+        duration: String::new(),
+        current: true,
+        is_current: false,
     })
 }
 
@@ -586,6 +868,26 @@ mod tests {
         let current = "root     pts/1        Thu Oct 29 16:30:25 2026   still logged in                       190.103.29.167";
         let session = parse_session(current).unwrap();
         assert!(session.current);
+
+        let who_line = "root     pts/0        2026-11-10 23:25 .        864856 (190.103.29.167)";
+        let who_session = parse_who_line(who_line).unwrap();
+        assert_eq!(who_session.user, "root");
+        assert_eq!(who_session.tty, "pts/0");
+        assert_eq!(who_session.from, "190.103.29.167");
+        assert!(who_session.current);
+
+        let w_line = "root     pts/3    190.103.29.167   23:25    0.00s  0.01s  0.00s bash";
+        let w_session = parse_w_line(w_line).unwrap();
+        assert_eq!(w_session.user, "root");
+        assert_eq!(w_session.tty, "pts/3");
+        assert_eq!(w_session.from, "190.103.29.167");
+        assert!(w_session.current);
+
+        let sshd_line = "864856 root pts/4 sshd: root@pts/4";
+        let sshd_session = parse_sshd_proc(sshd_line).unwrap();
+        assert_eq!(sshd_session.user, "root");
+        assert_eq!(sshd_session.tty, "pts/4");
+        assert!(sshd_session.current);
     }
 
     #[test]

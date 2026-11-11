@@ -430,6 +430,7 @@ export interface SessionEntry {
   end: string
   duration: string
   current: boolean
+  isCurrent?: boolean
 }
 
 export interface AuthAttempt {
