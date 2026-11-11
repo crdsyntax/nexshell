@@ -6620,32 +6620,38 @@ body.theme-dark .remediation-guide-pill.is-active {
   flex-shrink: 0;
   margin-left: 8px;
   padding: 3px 9px;
-  border-radius: 0;
-  border: 1px solid #abefc6;
-  background: #ecfdf3;
-  color: #a3e635;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+  font-family: var(--font-display);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: all 120ms ease;
 }
 
-.fix-button:hover {
-  border-color: var(--accent);
-  background: #1e2a0c;
-  color: #ecfccb;
+.fix-button:hover:not(:disabled) {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 25%, transparent);
+  color: #ffffff;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 35%, transparent);
 }
 
 .fix-button:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .fix-manual {
   flex-shrink: 0;
   margin-left: 8px;
   padding: 2px 7px;
-  border-radius: 0;
-  border: 1px dashed #2a2f3b;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px dashed var(--border);
   color: var(--muted-2);
+  font-family: var(--font-display);
   font-size: 8.5px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
