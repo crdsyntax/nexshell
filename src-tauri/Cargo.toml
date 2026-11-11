@@ -1,6 +1,6 @@
 [package]
 name = "twoshell"
-version = "0.1.4"
+version = "0.1.5"
 description = "2Shell - multi-terminal SSH operations console"
 authors = ["2Shell"]
 edition = "2021"
