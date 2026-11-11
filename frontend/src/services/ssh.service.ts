@@ -1,5 +1,13 @@
 import { ipc } from '@/lib/api'
-import type { SshActionResult, SshConfig, SshKey } from '@/types'
+import type {
+  GenerateKeyRequest,
+  GeneratedKeyPair,
+  SaveKeyPairRequest,
+  SaveKeyPairResult,
+  SshActionResult,
+  SshConfig,
+  SshKey,
+} from '@/types'
 
 export const sshService = {
   keys: (profileId: string) => ipc.invoke<SshKey[]>('ssh_keys', { profileId }),
@@ -10,4 +18,8 @@ export const sshService = {
     ipc.invoke<SshActionResult>('ssh_remove_key', { profileId, user, publicKey }),
   setKeyOnly: (profileId: string, enabled: boolean, confirmed: boolean) =>
     ipc.invoke<SshActionResult>('ssh_set_key_only', { profileId, enabled, confirmed }),
+  generateKey: (request: GenerateKeyRequest) =>
+    ipc.invoke<GeneratedKeyPair>('ssh_generate_key', { request }),
+  saveKeyPair: (request: SaveKeyPairRequest) =>
+    ipc.invoke<SaveKeyPairResult>('ssh_save_key_pair', { request }),
 }

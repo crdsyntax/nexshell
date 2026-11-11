@@ -711,6 +711,36 @@ export interface SshActionResult {
   config: SshConfig | null
 }
 
+export interface GenerateKeyRequest {
+  algorithm: string
+  bits?: number
+  comment?: string
+  passphrase?: string
+  destinationPath?: string
+}
+
+export interface GeneratedKeyPair {
+  algorithm: string
+  bits?: number
+  comment: string
+  publicKey: string
+  privateKey: string
+  fingerprint: string
+  savedPrivatePath?: string
+  savedPublicPath?: string
+}
+
+export interface SaveKeyPairRequest {
+  privateKey: string
+  publicKey: string
+  destinationPath: string
+}
+
+export interface SaveKeyPairResult {
+  privatePath: string
+  publicPath: string
+}
+
 export interface ExecutionLog {
   id: number
   timestamp: number

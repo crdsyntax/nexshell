@@ -831,6 +831,24 @@ pub async fn ssh_set_key_only(
 }
 
 #[tauri::command]
+pub fn ssh_generate_key(
+    request: crate::application::ssh_keygen::GenerateKeyRequest,
+) -> AppResult<crate::application::ssh_keygen::GeneratedKeyPair> {
+    crate::application::ssh_keygen::generate_ssh_key_pair(request)
+}
+
+#[tauri::command]
+pub fn ssh_save_key_pair(
+    request: crate::application::ssh_keygen::SaveKeyPairRequest,
+) -> AppResult<crate::application::ssh_keygen::SaveKeyPairResult> {
+    crate::application::ssh_keygen::save_key_pair_to_disk(
+        &request.private_key,
+        &request.public_key,
+        &request.destination_path,
+    )
+}
+
+#[tauri::command]
 pub async fn run_security_audit(
     profile_id: String,
     state: State<'_, AppState>,

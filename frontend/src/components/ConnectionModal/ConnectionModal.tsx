@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { profileService } from '@/services/profile.service'
 import { useAppStore } from '@/store/useAppStore'
+import { GenerateSshKeyModal } from '@/components/GenerateSshKeyModal'
 import {
   AlertIcon,
   CheckIcon,
@@ -120,6 +121,7 @@ export function ConnectionModal({ open, profile, onClose, onSaved }: ConnectionM
   const [testResult, setTestResult] = useState<TestResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [keyProbe, setKeyProbe] = useState<KeyProbe | null>(null)
+  const [generateKeyOpen, setGenerateKeyOpen] = useState(false)
   const passphraseRef = useRef<HTMLInputElement>(null)
   const pushToast = useAppStore((state) => state.pushToast)
 
@@ -463,6 +465,14 @@ export function ConnectionModal({ open, profile, onClose, onSaved }: ConnectionM
                     >
                       <FolderIcon size={14} /> Browse…
                     </button>
+                    <button
+                      type="button"
+                      className="browse-button"
+                      onClick={() => setGenerateKeyOpen(true)}
+                      title="Generar un nuevo par de claves SSH"
+                    >
+                      <KeyIcon size={14} /> Generar clave…
+                    </button>
                   </div>
                   <p className="field-hint">
                     Opens the native file picker. The path is stored; the key contents are
@@ -739,6 +749,34 @@ export function ConnectionModal({ open, profile, onClose, onSaved }: ConnectionM
           </div>
         </footer>
       </div>
+
+      <GenerateSshKeyModal
+        open={generateKeyOpen}
+        onClose={() => setGenerateKeyOpen(false)}
+        targetProfileName={form.name || form.host || undefined}
+        onUseInProfile={(keyPair) => {
+          if (keyPair.savedPrivatePath) {
+            setForm((curr) => ({
+              ...curr,
+              keyPath: keyPair.savedPrivatePath!,
+              privateKey: '',
+              keySource: 'path',
+              authMethod: 'key',
+            }))
+            void inspectKey(keyPair.savedPrivatePath)
+          } else {
+            setForm((curr) => ({
+              ...curr,
+              privateKey: keyPair.privateKey,
+              keyPath: '',
+              keySource: 'inline',
+              authMethod: 'key',
+            }))
+            setKeyProbe(null)
+          }
+          setGenerateKeyOpen(false)
+        }}
+      />
     </div>
   )
 }

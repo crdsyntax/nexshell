@@ -134,6 +134,8 @@ pub fn run() {
             presentation::tauri::commands::ssh_add_key,
             presentation::tauri::commands::ssh_remove_key,
             presentation::tauri::commands::ssh_set_key_only,
+            presentation::tauri::commands::ssh_generate_key,
+            presentation::tauri::commands::ssh_save_key_pair,
             presentation::tauri::commands::run_security_audit,
             presentation::tauri::commands::list_security_audits,
             presentation::tauri::commands::get_security_audit,

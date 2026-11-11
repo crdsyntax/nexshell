@@ -20,5 +20,6 @@ pub mod security;
 pub mod services;
 pub mod sharing;
 pub mod ssh_access;
+pub mod ssh_keygen;
 pub mod sudoers;
 pub mod terminal;

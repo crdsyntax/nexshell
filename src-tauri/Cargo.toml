@@ -37,6 +37,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde_bytes = "0.11"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 hmac = "0.12"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"

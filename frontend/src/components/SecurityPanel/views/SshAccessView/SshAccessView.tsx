@@ -10,6 +10,8 @@ import {
   TrashIcon,
   XIcon,
 } from '@/components/Icons'
+import { GenerateSshKeyModal } from '@/components/GenerateSshKeyModal'
+import { sshService } from '@/services/ssh.service'
 import type { SshKey } from '@/types'
 import { useState } from 'react'
 
@@ -31,7 +33,9 @@ export function SshAccessView({ profileId }: { profileId: string }) {
     load,
     loading,
     passwordAuth,
+    profile,
     publicKey,
+    pushToast,
     removeKey,
     setAcknowledged,
     setAddOpen,
@@ -43,6 +47,7 @@ export function SshAccessView({ profileId }: { profileId: string }) {
   } = useSshAccessView(profileId)
 
   const [copiedFingerprint, setCopiedFingerprint] = useState<string | null>(null)
+  const [generateOpen, setGenerateOpen] = useState(false)
 
   const handleCopyFingerprint = async (key: SshKey) => {
     try {
@@ -60,6 +65,14 @@ export function SshAccessView({ profileId }: { profileId: string }) {
         <button className="top-action" onClick={() => void load()} disabled={loading}>
           <RefreshIcon size={13} className={loading ? 'spin' : ''} />
           {loading ? 'Leyendo política…' : 'Refresh'}
+        </button>
+        <button
+          className="top-action"
+          type="button"
+          onClick={() => setGenerateOpen(true)}
+          title="Generar un nuevo par de claves SSH (ED25519 o RSA)"
+        >
+          <KeyIcon size={13} /> Generar par de claves
         </button>
         <button
           className="primary-button"
@@ -232,7 +245,17 @@ export function SshAccessView({ profileId }: { profileId: string }) {
                 />
               </label>
               <label className="field">
-                <span>Public key</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span>Public key</span>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    style={{ padding: '2px 8px', fontSize: 11 }}
+                    onClick={() => setGenerateOpen(true)}
+                  >
+                    <KeyIcon size={12} /> Generar par de claves…
+                  </button>
+                </div>
                 <textarea
                   className="mono-input"
                   rows={5}
@@ -338,6 +361,24 @@ export function SshAccessView({ profileId }: { profileId: string }) {
           </div>
         </div>
       )}
+
+      <GenerateSshKeyModal
+        open={generateOpen}
+        onClose={() => setGenerateOpen(false)}
+        targetProfileName={profile?.name}
+        onSuccess={(pair) => {
+          setPublicKey(pair.publicKey)
+        }}
+        onInstallOnHost={async (pubKey) => {
+          const targetUser = keyUser.trim() || profile?.username || 'root'
+          const result = await sshService.addKey(profileId, targetUser, pubKey.trim())
+          if (!result.ok) {
+            throw new Error(result.output)
+          }
+          pushToast('success', `Clave instalada correctamente para ${targetUser}`)
+          await load()
+        }}
+      />
     </div>
   )
 }
