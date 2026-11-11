@@ -61,22 +61,29 @@ fi
 
 PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-PRIMARY_FILE="${APPIMAGE_NAME:-$DEB_NAME}"
-PRIMARY_SIG="${APPIMAGE_SIG:-$DEB_SIG}"
+node -e '
+const fs = require("fs");
+const [version, notes, baseUrl, pubDate, debName, debSig, appImageName, appImageSig, outFile] = process.argv.slice(1);
 
-cat <<EOF > "$OUT_DIR/latest.json"
-{
-  "version": "$VERSION",
-  "notes": "$NOTES",
-  "pub_date": "$PUB_DATE",
-  "platforms": {
-    "linux-x86_64": {
-      "url": "$BASE_URL/$PRIMARY_FILE",
-      "signature": "$PRIMARY_SIG"
-    }
-  }
+const platforms = {};
+if (appImageName && appImageSig) {
+  platforms["linux-x86_64"] = { url: `${baseUrl}/${appImageName}`, signature: appImageSig };
+  platforms["linux-x86_64-appimage"] = { url: `${baseUrl}/${appImageName}`, signature: appImageSig };
+} else if (debName && debSig) {
+  platforms["linux-x86_64"] = { url: `${baseUrl}/${debName}`, signature: debSig };
 }
-EOF
+if (debName && debSig) {
+  platforms["linux-x86_64-deb"] = { url: `${baseUrl}/${debName}`, signature: debSig };
+}
+
+const manifest = {
+  version,
+  notes,
+  pub_date: pubDate,
+  platforms
+};
+fs.writeFileSync(outFile, JSON.stringify(manifest, null, 2) + "\n");
+' "$VERSION" "$NOTES" "$BASE_URL" "$PUB_DATE" "${DEB_NAME:-}" "${DEB_SIG:-}" "${APPIMAGE_NAME:-}" "${APPIMAGE_SIG:-}" "$OUT_DIR/latest.json"
 
 echo "Done staging update in $OUT_DIR."
 

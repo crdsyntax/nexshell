@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities required by NexShell: core IPC, events and the native file picker for SSH keys.",
+  "description": "Capabilities required by NexShell: core IPC, events, native file picker, notifications, process management, and in-app updater.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save", "notification:default"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "notification:default",
+    "process:default",
+    "updater:default"
+  ]
 }
