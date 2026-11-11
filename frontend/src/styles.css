@@ -5201,8 +5201,8 @@ button.command-result__head {
 .db-info-card {
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
-  border-radius: 0;
-  background: #f8fafc;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
   min-width: 0;
 }
 
@@ -5296,11 +5296,11 @@ button.command-result__head {
 }
 
 .db-user-row:hover {
-  background: #e0f2fe;
+  background: var(--surface-hover, var(--surface-2));
 }
 
 .db-user-row--head {
-  background: #f8fafc;
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border-soft);
   font-size: 8.5px;
   text-transform: uppercase;
@@ -11880,7 +11880,7 @@ button {
   padding: 5px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--panel);
   color: var(--muted);
   font-family: var(--font-display);
   font-size: 11px;
@@ -11890,14 +11890,14 @@ button {
 }
 
 .db-engine-tab:hover {
-  background: var(--surface);
+  background: var(--surface-hover, var(--surface-2));
   color: var(--text);
 }
 
 .db-engine-tab.is-active {
-  background: #eff8ff;
-  border-color: #b2ddff;
-  color: #175cd3;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
 }
 
@@ -11909,7 +11909,7 @@ button {
   gap: 8px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-soft);
-  background: #f8fafc;
+  background: var(--surface-2);
 }
 
 .db-connect > header h3 {
@@ -11927,7 +11927,7 @@ button {
 
 .db-connect > header p {
   margin: 0;
-  color: var(--muted-2);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -11981,10 +11981,10 @@ button {
   gap: 10px;
   margin-bottom: 12px;
   padding: 8px 14px;
-  border: 1px solid #abefc6;
-  background: #edfcf2;
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
   border-radius: var(--radius-sm);
-  color: #067647;
+  color: var(--ok);
   font-size: 11px;
 }
 
