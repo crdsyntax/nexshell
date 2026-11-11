@@ -624,12 +624,14 @@ export function ForensicsView({ profileId }: { profileId: string }) {
               </div>
               {processedAttempts.map((item, index) => (
                 <div className="forensics-row" key={`${item.timestamp}-${item.user}-${index}`}>
-                  <span className="mono forensics-dim">{item.timestamp}</span>
+                  <span className="mono forensics-time-val">{item.timestamp}</span>
                   <span className={`mono forensics-user ${item.user === 'root' ? 'is-root' : ''}`}>
                     {item.user || '—'}
                   </span>
                   <span className="mono forensics-ip">{item.from || '—'}</span>
-                  <span className="mono forensics-dim">{item.method || '—'}</span>
+                  <span>
+                    <span className="mono forensics-method">{item.method || '—'}</span>
+                  </span>
                   <span>
                     <span
                       className={`forensics-badge ${

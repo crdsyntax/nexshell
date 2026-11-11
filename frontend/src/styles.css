@@ -10042,7 +10042,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--muted);
 }
 
 .forensics-table--sessions .forensics-row {
@@ -10084,10 +10084,25 @@ body {
 }
 
 .forensics-dim {
-  color: var(--muted-2);
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.forensics-time-val {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.forensics-method {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: 10.5px;
 }
 
 .forensics-ip {
