@@ -13,6 +13,7 @@ import {
 import {
   ActivityIcon,
   EditIcon,
+  KeyIcon,
   PlusIcon,
   RefreshIcon,
   SearchIcon,
@@ -258,6 +259,13 @@ export function Sidebar({ onNew, onEdit }: SidebarProps) {
       </div>
 
       <div className="sidebar__footer">
+        <button
+          className="connect-node connect-node--secondary"
+          onClick={() => useAppStore.getState().openKeygenModal()}
+          title="Generar un nuevo par de claves SSH (ED25519 o RSA)"
+        >
+          <KeyIcon size={14} /> Generar Clave SSH
+        </button>
         <button
           className="connect-node connect-node--secondary"
           onClick={importShare}

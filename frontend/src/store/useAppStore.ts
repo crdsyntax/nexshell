@@ -44,6 +44,7 @@ interface AppStore {
   pendingDbAuth: Record<string, EphemeralDatabase>
   shareTarget: ShareTarget | null
   importShareOpen: boolean
+  keygenOpen: boolean
   settingsOpen: boolean
   theme: ThemeType
   accentPalette: AccentPalette
@@ -88,6 +89,8 @@ interface AppStore {
   closeImportModal: () => void
   openSettingsModal: () => void
   closeSettingsModal: () => void
+  openKeygenModal: () => void
+  closeKeygenModal: () => void
   setTheme: (theme: ThemeType) => void
   setAccentPalette: (palette: AccentPalette) => void
   setUiFontFamily: (family: string) => void
@@ -122,6 +125,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   pendingDbAuth: {},
   shareTarget: null,
   importShareOpen: false,
+  keygenOpen: false,
   settingsOpen: false,
   theme: ((typeof window !== 'undefined' && localStorage.getItem('nexshell.theme')) as ThemeType) || 'dark',
   accentPalette: ((typeof window !== 'undefined' && localStorage.getItem('nexshell.accent')) as AccentPalette) || 'nexshell',
@@ -565,6 +569,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   closeImportModal: () => set({ importShareOpen: false }),
   openSettingsModal: () => set({ settingsOpen: true }),
   closeSettingsModal: () => set({ settingsOpen: false }),
+  openKeygenModal: () => set({ keygenOpen: true }),
+  closeKeygenModal: () => set({ keygenOpen: false }),
   setTheme: (theme) => {
     try {
       localStorage.setItem('nexshell.theme', theme)

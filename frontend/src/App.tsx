@@ -16,6 +16,7 @@ import { ShareConnectionModal } from '@/components/Sharing/ShareConnectionModal'
 import { ImportShareModal } from '@/components/Sharing/ImportShareModal'
 import { UpdateModal } from '@/components/update/UpdateModal'
 import { SettingsModal } from '@/components/SettingsModal'
+import { GenerateSshKeyModal } from '@/components/GenerateSshKeyModal'
 import { EmptyState } from '@/components/EmptyState'
 import { Toasts } from '@/components/Toasts'
 import { useAppStore } from '@/store/useAppStore'
@@ -69,6 +70,8 @@ export default function App() {
   const closeImportModal = useAppStore((state) => state.closeImportModal)
   const settingsOpen = useAppStore((state) => state.settingsOpen)
   const closeSettingsModal = useAppStore((state) => state.closeSettingsModal)
+  const keygenOpen = useAppStore((state) => state.keygenOpen)
+  const closeKeygenModal = useAppStore((state) => state.closeKeygenModal)
   const [modalOpen, setModalOpen] = useState(false)
 
   useThemeEffect()
@@ -308,6 +311,10 @@ export default function App() {
       <SettingsModal
         open={settingsOpen}
         onClose={closeSettingsModal}
+      />
+      <GenerateSshKeyModal
+        open={keygenOpen}
+        onClose={closeKeygenModal}
       />
       <UpdateModal />
       <Toasts />

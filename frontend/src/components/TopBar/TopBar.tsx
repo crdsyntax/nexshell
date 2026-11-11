@@ -16,6 +16,7 @@ import {
   DatabaseIcon,
   EditIcon,
   FileIcon,
+  KeyIcon,
   NetworkIcon,
   PlugIcon,
   RefreshIcon,
@@ -163,6 +164,14 @@ export function TopBar({ profile, onEdit }: TopBarProps) {
             </button>
           </>
         )}
+        <button
+          className="icon-button icon-button--bordered"
+          onClick={() => useAppStore.getState().openKeygenModal()}
+          title="Generar par de claves SSH"
+          aria-label="Generar par de claves SSH"
+        >
+          <KeyIcon size={14} />
+        </button>
         <button
           className="icon-button icon-button--bordered"
           onClick={() => useAppStore.getState().openSettingsModal()}

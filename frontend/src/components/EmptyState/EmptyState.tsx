@@ -1,7 +1,7 @@
 import { useAppStore } from '@/store/useAppStore'
 import { Logo } from '@/components/Logo'
 import { openMonitor, openServices, openTerminal } from '@/lib/actions'
-import { ActivityIcon, PlusIcon, ServerIcon, TerminalIcon } from '@/components/Icons'
+import { ActivityIcon, KeyIcon, PlusIcon, ServerIcon, TerminalIcon } from '@/components/Icons'
 
 interface EmptyStateProps {
   onNew: () => void
@@ -17,9 +17,18 @@ export function EmptyState({ onNew }: EmptyStateProps) {
         <Logo size={64} className="empty-state__logo" />
         <h1>Remote operations, one console.</h1>
         {profiles.length === 0 ? (
-          <button className="primary-button" onClick={onNew}>
-            <PlusIcon size={16} /> Create your first connection
-          </button>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button className="primary-button" onClick={onNew}>
+              <PlusIcon size={16} /> Create your first connection
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() => useAppStore.getState().openKeygenModal()}
+              style={{ padding: '8px 16px', border: '1px solid var(--border)' }}
+            >
+              <KeyIcon size={15} /> Generar par de claves SSH
+            </button>
+          </div>
         ) : (
           <div className="empty-state__profiles">
             {profiles.slice(0, 4).map((profile) => (
