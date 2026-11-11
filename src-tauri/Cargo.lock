@@ -5820,7 +5820,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twoshell"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aes-gcm 0.10.3",
  "argon2 0.5.3",

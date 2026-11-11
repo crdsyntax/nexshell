@@ -38,6 +38,7 @@ export function useThemeEffect() {
     root.style.setProperty('--font-display', fontToApply)
     root.style.setProperty('--sans', fontToApply)
 
+    root.style.setProperty('--ui-font-size', `${uiFontSize}px`)
     root.style.setProperty('--ch-ui-font-size', `${uiFontSize}px`)
     root.style.setProperty('--radius', `${borderRadius}px`)
     root.style.setProperty('--radius-sm', `${Math.max(4, borderRadius - 2)}px`)
